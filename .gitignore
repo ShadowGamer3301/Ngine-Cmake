@@ -2,7 +2,11 @@
 /out
 
 #Ignore 3rd-party libraries
-/vendor
+/vendor/include
+/vendor/lib_unix_dbg
+/vendor/lib_unix_rel
+/vendor/lib_win_dbg
+/vendor/lib_win_rel
 
 #Ignore resources folder
 /Resource
