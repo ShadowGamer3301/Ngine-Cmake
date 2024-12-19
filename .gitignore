@@ -1,0 +1,11 @@
+#Ignore output folder
+/out
+
+#Ignore 3rd-party libraries
+/vendor
+
+#Ignore resources folder
+/Resource
+
+#Ignore visual studio folders
+/.vs

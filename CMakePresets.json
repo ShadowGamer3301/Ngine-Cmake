@@ -1,0 +1,31 @@
+﻿{
+    "version": 3,
+    "configurePresets": [
+      {
+        "name": "Win32 debug",
+        "generator": "Ninja",
+        "binaryDir": "${sourceDir}/out/build/${presetName}",
+        "installDir": "${sourceDir}/out/install/${presetName}",
+        "cacheVariables": {
+          "CMAKE_C_COMPILER": "cl.exe",
+          "CMAKE_CXX_COMPILER": "cl.exe",
+          "CMAKE_BUILD_TYPE": "Debug",
+          "TARGET_PLATFORM_WINDOWS": true,
+          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Win32.cmake"
+        }
+      },
+      {
+        "name": "Win32 release",
+        "generator": "Ninja",
+        "binaryDir": "${sourceDir}/out/build/${presetName}",
+        "installDir": "${sourceDir}/out/install/${presetName}",
+        "cacheVariables": {
+          "CMAKE_C_COMPILER": "cl.exe",
+          "CMAKE_CXX_COMPILER": "cl.exe",
+          "CMAKE_BUILD_TYPE": "Release",
+          "TARGET_PLATFORM_WINDOWS": true,
+          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Win32.cmake"
+        }
+      }
+    ]
+}
