@@ -11,6 +11,7 @@
           "CMAKE_CXX_COMPILER": "cl.exe",
           "CMAKE_BUILD_TYPE": "Debug",
           "TARGET_PLATFORM_WINDOWS": true,
+          "TARGET_PLATFORM_LINUX": false,
           "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Win32.cmake"
         }
       },
@@ -24,7 +25,36 @@
           "CMAKE_CXX_COMPILER": "cl.exe",
           "CMAKE_BUILD_TYPE": "Release",
           "TARGET_PLATFORM_WINDOWS": true,
+          "TARGET_PLATFORM_LINUX": false,
           "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Win32.cmake"
+        }
+      },
+      {
+        "name": "Linux release",
+        "generator": "Ninja",
+        "binaryDir": "${sourceDir}/out/build/${presetName}",
+        "installDir": "${sourceDir}/out/install/${presetName}",
+        "cacheVariables": {
+          "CMAKE_C_COMPILER": "clang",
+          "CMAKE_CXX_COMPILER": "clang",
+          "CMAKE_BUILD_TYPE": "Release",
+          "TARGET_PLATFORM_WINDOWS": false,
+          "TARGET_PLATFORM_LINUX": true,
+          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Linux.cmake"
+        }
+      },
+      {
+        "name": "Linux debug",
+        "generator": "Ninja",
+        "binaryDir": "${sourceDir}/out/build/${presetName}",
+        "installDir": "${sourceDir}/out/install/${presetName}",
+        "cacheVariables": {
+          "CMAKE_C_COMPILER": "clang",
+          "CMAKE_CXX_COMPILER": "clang++",
+          "CMAKE_BUILD_TYPE": "Debug",
+          "TARGET_PLATFORM_WINDOWS": false,
+          "TARGET_PLATFORM_LINUX": true,
+          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Linux.cmake"
         }
       }
     ]

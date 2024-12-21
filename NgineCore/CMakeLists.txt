@@ -6,6 +6,8 @@ if(TARGET_PLATFORM_WINDOWS)
 	#Mark project as DLL file
 	target_compile_definitions(NgineCore PRIVATE "_WINDLL")
 	target_link_libraries(NgineCore PRIVATE "glfw3.lib" "d3d11.lib" "dxgi.lib" "d3dcompiler.lib" Loguru)
+elseif(TARGET_PLATFORM_LINUX)
+	target_link_libraries(NgineCore PRIVATE "libvulkan.so" "libglfw.so" Loguru)
 endif()
 
 target_include_directories(NgineCore PUBLIC "include" "../loguru")

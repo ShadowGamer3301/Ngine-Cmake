@@ -16,9 +16,6 @@ if(TARGET_PLATFORM_WINDOWS)
 	set(CMAKE_CXX_STANDARD 20)
 	set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-	#Use windows toolchain
-	
-
 	#Set output directories
 	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Win32/Lib")
 	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Win32/Lib")
@@ -33,9 +30,39 @@ if(TARGET_PLATFORM_WINDOWS)
 	endif()
 
 	add_compile_definitions("WIN32")
+	add_subdirectory(loguru)
 	add_subdirectory(NgineCore)
 	add_subdirectory(NgineRuntime)
+
+	file(COPY "Resource" DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+
+else() #Linux build settings
+	#Require C++ 20 standard
+	set(CMAKE_CXX_STANDARD 20)
+	set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+
+	#Set output directories
+	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Linux/Lib")
+	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Linux/Lib")
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Linux/Bin")
+
+	#Create json file for CLangd
+	set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
+	add_compile_options(-fPIC)
+
+	#Set include and link directories
+	include_directories("vendor/include")
+	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+		link_directories("vendor/lib_unix_dbg")
+	else()
+		link_directories("vendor/lib_unix_rel")
+	endif()
+
+
 	add_subdirectory(loguru)
+	add_subdirectory(NgineCore)
+	add_subdirectory(NgineRuntime)
 
 	file(COPY "Resource" DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 

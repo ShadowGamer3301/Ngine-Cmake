@@ -13,3 +13,9 @@
 
 #Ignore visual studio folders
 /.vs
+
+#Ignore clangd compile commands
+compile_commands.json
+
+#Ignore clang and clangd cache files
+/.cache

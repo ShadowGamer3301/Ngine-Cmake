@@ -1,7 +1,7 @@
 #pragma once
 
 //Windows definitions
-#if defined(WIN32) || defined(_WIN32)
+#if defined(WIN32) || defined(_WIN32) && !defined(linux)
 	#if defined(_WINDLL) //If project is marked as DLL file generate additional LIB file for linking
 		#define NGAPI __declspec(dllexport)
 	#else
@@ -29,6 +29,25 @@
 
 //Loguru headers
 #include <loguru.hpp>
+
+#else
+
+#define GLFW_EXPOSE_NATIVE_X11 //Allow glfw library to interact with Wayland
+
+//GLFW headers
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
+//Vulkan headers
+#include <vulkan/vulkan.hpp>
+
+//mINI headers
+#include <mini/ini.h>
+
+//Loguru headers
+#include <loguru.hpp>
+
+
 
 #endif
 

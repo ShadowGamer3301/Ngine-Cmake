@@ -17,7 +17,8 @@ namespace Ngine
 		wBuffer = oss.str();
 		return wBuffer.c_str();
 	}
-
+	
+#if defined(WIN32) || defined(_WIN32)
 	DirectXException::DirectXException(HRESULT hr, std::source_location loc)
 		: code(hr), Exception(loc)
 	{}
@@ -34,4 +35,5 @@ namespace Ngine
 		wBuffer = oss.str();
 		return wBuffer.c_str();
 	}
+#endif
 }

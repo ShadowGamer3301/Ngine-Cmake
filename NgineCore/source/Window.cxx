@@ -57,4 +57,6 @@ namespace Ngine
 	{
 		return mSizeArray[1];
 	}
+
+	
 }
