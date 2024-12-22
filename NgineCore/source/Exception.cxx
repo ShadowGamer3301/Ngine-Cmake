@@ -1,4 +1,5 @@
 #include "Exception.h"
+#include <source_location>
 
 namespace Ngine
 {
@@ -35,5 +36,24 @@ namespace Ngine
 		wBuffer = oss.str();
 		return wBuffer.c_str();
 	}
+#elif defined(__linux__) || defined(linux)
+
+	VulkanException::VulkanException(VkResult res, std::source_location loc)
+		: code(res), Exception(loc)
+	{}
+
+	const char* VulkanException::what() const noexcept
+	{
+		std::ostringstream oss;
+		oss << "Exception caught!\n"
+			<< "Code: " << code << "\n"
+			<< "File: " << file << "\n"
+			<< "Func: " << func << "\n"
+			<< "Line: " << line << "\n";
+
+		wBuffer = oss.str();
+		return wBuffer.c_str();
+	}
+
 #endif
 }

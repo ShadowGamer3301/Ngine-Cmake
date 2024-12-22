@@ -1,6 +1,7 @@
 #pragma once
 #include "Core.hxx"
 #include "Window.h"
+#include "GraphicsCore.h"
 
 namespace Ngine
 {
@@ -19,6 +20,7 @@ namespace Ngine
 
 	protected:
 		Window* pWindow;
+		GraphicsCore* pGfxCore;
 	};
 
 	Application* GenerateNewApplicationInterface(); //Needs to be defined in client/runtime project

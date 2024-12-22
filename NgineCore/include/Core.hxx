@@ -32,7 +32,7 @@
 
 #else
 
-#define GLFW_EXPOSE_NATIVE_X11 //Allow glfw library to interact with Wayland
+#define GLFW_EXPOSE_NATIVE_X11 //Allow glfw library to interact with X11
 
 //GLFW headers
 #include <GLFW/glfw3.h>
@@ -47,7 +47,7 @@
 //Loguru headers
 #include <loguru.hpp>
 
-
+#define VK_THROW_IF_FAILED(vkres) if(vkres != VK_SUCCESS) throw VulkanException(vkres)
 
 #endif
 

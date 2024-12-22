@@ -1,5 +1,7 @@
 #pragma once
 #include "Core.hxx"
+#include <source_location>
+#include <vulkan/vulkan_core.h>
 
 namespace Ngine
 {
@@ -29,6 +31,17 @@ namespace Ngine
 
 	private:
 		HRESULT code;
+	};
+#elif defined(__linux__) || defined (linux)
+
+	class VulkanException : public Exception
+	{
+	public:
+		VulkanException(VkResult res, std::source_location loc = std::source_location::current());
+		const char* what() const noexcept;
+
+	private:
+		VkResult code;
 	};
 #endif
 }
