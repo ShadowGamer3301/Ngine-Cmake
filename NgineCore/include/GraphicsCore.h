@@ -5,7 +5,7 @@
 
 namespace Ngine
 {
-#if defined(__linux__) || defined(linux)
+#if defined(TARGET_PLATFORM_LINUX)
     class GraphicsCore
     {
     public:
@@ -27,5 +27,17 @@ namespace Ngine
         VkDevice mDevice;
         VkDebugUtilsMessengerEXT mDebugMessenger;
     };
+#elif defined(TARGET_PLATFORM_WINDOWS)
+
+#elif defined(TARGET_PLATFORM_XBOX)
+    class NGAPI GraphicsCore
+    {
+    public:
+        GraphicsCore(Window* pWindow);
+        ~GraphicsCore();
+
+    private:
+    };
+
 #endif
 }

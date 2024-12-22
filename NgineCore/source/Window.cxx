@@ -4,6 +4,7 @@
 
 namespace Ngine
 {
+#if !defined(TARGET_PLATFORM_XBOX)
 	Window::Window()
 	{
 		if (!glfwInit())
@@ -30,7 +31,7 @@ namespace Ngine
 		glfwDestroyWindow(pWindow);
 	}
 
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS)
 	HWND Window::GetWindowHandle()
 	{
 		return glfwGetWin32Window(pWindow);
@@ -58,5 +59,22 @@ namespace Ngine
 		return mSizeArray[1];
 	}
 
-	
+#else
+
+	Window::Window()
+	{
+
+	}
+
+	Window::~Window()
+	{
+
+	}
+
+	bool Window::UpdateWindow()
+	{
+		return true;
+	}
+
+#endif
 }

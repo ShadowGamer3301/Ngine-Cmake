@@ -19,7 +19,7 @@ namespace Ngine
 		return wBuffer.c_str();
 	}
 	
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS)
 	DirectXException::DirectXException(HRESULT hr, std::source_location loc)
 		: code(hr), Exception(loc)
 	{}
@@ -36,7 +36,7 @@ namespace Ngine
 		wBuffer = oss.str();
 		return wBuffer.c_str();
 	}
-#elif defined(__linux__) || defined(linux)
+#elif defined(TARGET_PLATFORM_LINUX)
 
 	VulkanException::VulkanException(VkResult res, std::source_location loc)
 		: code(res), Exception(loc)

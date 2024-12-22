@@ -3,18 +3,18 @@
 
 namespace Ngine
 {
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS)
 	class NGAPI Window;
 #endif
 
-#if !defined(_GAMING_XBOX)
+#if !defined(TARGET_PLATFORM_XBOX)
 	class Window
 	{
 	public:
 		Window();
 		~Window();
 
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS)
 		HWND GetWindowHandle();
 #endif
 
@@ -28,6 +28,17 @@ namespace Ngine
 		GLFWwindow* pWindow = nullptr;
 		uint32_t mSizeArray[2] = {0,0};
 		bool mIsFullscreen = false;
+	};
+#endif
+
+#if defined(TARGET_PLATFORM_XBOX)
+	class NGAPI Window
+	{
+	public:
+		Window();
+		~Window();
+
+		bool UpdateWindow();
 	};
 #endif
 }

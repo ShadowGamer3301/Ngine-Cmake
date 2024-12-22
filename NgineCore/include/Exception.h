@@ -1,13 +1,13 @@
 #pragma once
 #include "Core.hxx"
-#include <source_location>
-#include <vulkan/vulkan_core.h>
 
 namespace Ngine
 {
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS)
 	class NGAPI Excpetion;
 	class NGAPI DirectXException;
+#elif defined(TARGET_PLATFORM_XBOX)
+	class NGAPI Excpetion;
 #endif
 
 	class Exception : public std::exception
@@ -22,7 +22,7 @@ namespace Ngine
 		mutable std::string wBuffer;
 	};
 
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS)
 	class DirectXException : public Exception
 	{
 	public:
@@ -32,7 +32,7 @@ namespace Ngine
 	private:
 		HRESULT code;
 	};
-#elif defined(__linux__) || defined (linux)
+#elif defined(TARGET_PLATFORM_LINUX)
 
 	class VulkanException : public Exception
 	{

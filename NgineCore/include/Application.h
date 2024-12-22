@@ -5,7 +5,7 @@
 
 namespace Ngine
 {
-#if defined(WIN32) || defined(_WIN32)
+#if defined(TARGET_PLATFORM_WINDOWS) || defined(TARGET_PLATFORM_XBOX)
 	class NGAPI Application;
 #endif
 

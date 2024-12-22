@@ -2,10 +2,11 @@
 #include "Core.hxx"
 #include "Exception.h"
 #include "FileUtils.h"
-#include <vulkan/vulkan_core.h>
 
 namespace Ngine
 {
+#if defined(TARGET_PLATFORM_LINUX)
+
     const std::vector<const char*> validationLayers = {
         "VK_LAYER_KHRONOS_validation"
     };
@@ -271,5 +272,17 @@ namespace Ngine
 
 		LOG_F(INFO, "Debug messenger set up!");
 	}
+#elif defined(TARGET_PLATFORM_XBOX)
 
+    GraphicsCore::GraphicsCore(Window* pWindow)
+    {
+
+    }
+
+    GraphicsCore::~GraphicsCore()
+    {
+
+    }
+
+#endif
 }

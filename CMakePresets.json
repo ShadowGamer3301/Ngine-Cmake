@@ -21,12 +21,13 @@
         "binaryDir": "${sourceDir}/out/build/${presetName}",
         "installDir": "${sourceDir}/out/install/${presetName}",
         "cacheVariables": {
-          "CMAKE_C_COMPILER": "cl.exe",
-          "CMAKE_CXX_COMPILER": "cl.exe",
-          "CMAKE_BUILD_TYPE": "Release",
-          "TARGET_PLATFORM_WINDOWS": true,
-          "TARGET_PLATFORM_LINUX": false,
-          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Win32.cmake"
+            "CMAKE_C_COMPILER": "cl.exe",
+            "CMAKE_CXX_COMPILER": "cl.exe",
+            "CMAKE_BUILD_TYPE": "Release",
+            "TARGET_PLATFORM_WINDOWS": true,
+            "TARGET_PLATFORM_LINUX": false,
+            "TARGET_PLATFORM_XBOX": false,
+            "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Win32.cmake"
         }
       },
       {
@@ -35,27 +36,44 @@
         "binaryDir": "${sourceDir}/out/build/${presetName}",
         "installDir": "${sourceDir}/out/install/${presetName}",
         "cacheVariables": {
-          "CMAKE_C_COMPILER": "clang",
-          "CMAKE_CXX_COMPILER": "clang",
-          "CMAKE_BUILD_TYPE": "Release",
-          "TARGET_PLATFORM_WINDOWS": false,
-          "TARGET_PLATFORM_LINUX": true,
-          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Linux.cmake"
+            "CMAKE_C_COMPILER": "clang",
+            "CMAKE_CXX_COMPILER": "clang",
+            "CMAKE_BUILD_TYPE": "Release",
+            "TARGET_PLATFORM_WINDOWS": false,
+            "TARGET_PLATFORM_LINUX": true,
+            "TARGET_PLATFORM_XBOX": false,
+            "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Linux.cmake"
         }
       },
-      {
-        "name": "Linux debug",
-        "generator": "Ninja",
-        "binaryDir": "${sourceDir}/out/build/${presetName}",
-        "installDir": "${sourceDir}/out/install/${presetName}",
-        "cacheVariables": {
-          "CMAKE_C_COMPILER": "clang",
-          "CMAKE_CXX_COMPILER": "clang++",
-          "CMAKE_BUILD_TYPE": "Debug",
-          "TARGET_PLATFORM_WINDOWS": false,
-          "TARGET_PLATFORM_LINUX": true,
-          "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Linux.cmake"
+        {
+            "name": "Linux debug",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "TARGET_PLATFORM_WINDOWS": false,
+                "TARGET_PLATFORM_LINUX": true,
+                "TARGET_PLATFORM_XBOX": false,
+                "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Linux.cmake"
+            }
+        },
+        {
+            "name": "Xbox debug",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "TARGET_PLATFORM_WINDOWS": false,
+                "TARGET_PLATFORM_LINUX": false,
+                "TARGET_PLATFORM_XBOX": true,
+                "CMAKE_TOOLCHAIN_FILE": "toolchain/tc_Xbox.cmake"
+            }
         }
-      }
     ]
 }

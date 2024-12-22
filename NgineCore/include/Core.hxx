@@ -1,7 +1,7 @@
 #pragma once
 
 //Windows definitions
-#if defined(WIN32) || defined(_WIN32) && !defined(linux)
+#if defined(TARGET_PLATFORM_WINDOWS)
 	#if defined(_WINDLL) //If project is marked as DLL file generate additional LIB file for linking
 		#define NGAPI __declspec(dllexport)
 	#else
@@ -30,7 +30,7 @@
 //Loguru headers
 #include <loguru.hpp>
 
-#else
+#elif defined(TARGET_PLATFORM_LINUX)
 
 #define GLFW_EXPOSE_NATIVE_X11 //Allow glfw library to interact with X11
 
@@ -48,6 +48,20 @@
 #include <loguru.hpp>
 
 #define VK_THROW_IF_FAILED(vkres) if(vkres != VK_SUCCESS) throw VulkanException(vkres)
+
+#elif defined(TARGET_PLATFORM_XBOX)
+
+	#if defined(_WINDLL) //If project is marked as DLL file generate additional LIB file for linking
+		#define NGAPI __declspec(dllexport)
+	#else
+		#define NGAPI __declspec(dllimport)
+	#endif
+
+//mINI headers
+#include <mini/ini.h>
+
+//Loguru headers
+#include <loguru.hpp>
 
 #endif
 
