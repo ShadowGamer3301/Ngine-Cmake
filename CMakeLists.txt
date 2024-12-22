@@ -50,6 +50,7 @@ elseif(TARGET_PLATFORM_LINUX) #Linux build settings
 	set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 	add_compile_options(-fPIC)
+	add_compile_definitions("TARGET_PLATFORM_LINUX")
 
 	#Set include and link directories
 	include_directories("vendor/include")
