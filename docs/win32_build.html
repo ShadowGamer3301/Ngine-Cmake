@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ngine Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header>
+        <h1>Ngine Documentation</h1>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar-left">
+            <h2>Components</h2>
+            <ul>
+                <li><a href="index.html">Introduction</a></li>
+                <li><a href="xbox_build.html">Building for Xbox</a></li>
+                <li><a href="win32_build.html">Building for Windows</a></li>
+                <li><a href="linux_build.html">Building for Linux</a></li>
+                <li><a href="#samples">Samples</a></li>
+            </ul>
+        </aside>
+
+        <main>
+            <div id="required_hardware">
+                <h1>Required hardware</h1>
+                <p>
+                    To build for Windows you need physical computer or virutal machine running Windows 10 or newer.
+                </p>
+            </div>
+            <div id="required_software">
+                <h1>Required software</h1>
+                <p>This is list of all the software that you need to compile project for windows.</p>
+                <ul>
+                    <li>Windows SDK: Windows 10 SDK (10.0.14393.0)</li>
+                    <li>Microsoft GDK: October 2024 public release</li>
+                    <li>CMake: Version 3.12 or newer</li>
+                    <li>Ninja: newest version possible</li>
+                    <li>C++ compiler: MSVC v143</li>
+                </ul>
+            </div>
+            <div id="bulding">
+                <h1>Building</h1>
+                <p>Steps to build project for Xbox</p>
+                <ol>
+                    <li>Open Ngine project as CMake project in Visual Studio 2022</li>
+                    <li>In configuration select "Win32 debug" or "Win32 release"</li>
+                    <li>Compile project</li>
+                </ol>
+            </div>
+        </main>
+
+        <aside class="sidebar-right">
+            <h2>In this page</h2>
+            <ul>
+                <li><a href="#required_hardware">Required hardware</a></li>
+                <li><a href="#required_software">Required software</a></li>
+                <li><a href="#building">Building</a></li>
+            </ul>
+        </aside>
+    </div>
+
+    <footer>
+    </footer>
+</body>
+
+</html>

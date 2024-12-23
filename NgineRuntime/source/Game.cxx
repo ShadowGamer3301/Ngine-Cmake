@@ -13,7 +13,7 @@ void Game::Run()
 {
 	while (pWindow->UpdateWindow())
 	{
-		
+		pGfxCore->RenderFrame();
 	}
 }
 
