@@ -1,10 +1,11 @@
 #include "Application.h"
+#include "Window.h"
 
 namespace Ngine
 {
 	Application::Application()
 	{
-		pWindow = new Window();
+		pWindow = new NgineWindow();
 		pGfxCore = new GraphicsCore(pWindow);
 	}
 

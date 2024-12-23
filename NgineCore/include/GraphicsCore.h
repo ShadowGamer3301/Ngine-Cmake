@@ -8,8 +8,15 @@ namespace Ngine
 #if defined(TARGET_PLATFORM_LINUX)
     class GraphicsCore
     {
+    private:
+        class QueueFamilyData
+        {
+        public:
+            std::optional<uint32_t> mGraphicsQueueIndex;
+            std::optional<uint32_t> mPresentationQueueIndex;
+        };
     public:
-        GraphicsCore(Window* pWindow);
+        GraphicsCore(NgineWindow* pWindow);
         ~GraphicsCore();
 
     private:
@@ -20,12 +27,16 @@ namespace Ngine
         bool CheckValidationSupport();
         void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         void SetupDebugMessenger();
+        void CreateSurface(NgineWindow* pWindow);
+        void ObtainQueueIndexes();
 
     private:
         VkInstance mInstance;
         VkPhysicalDevice mPhysDevice;
         VkDevice mDevice;
         VkDebugUtilsMessengerEXT mDebugMessenger;
+        VkSurfaceKHR mSurface;
+        QueueFamilyData mQueueData;
     };
 #elif defined(TARGET_PLATFORM_WINDOWS)
 
@@ -33,7 +44,7 @@ namespace Ngine
     class NGAPI GraphicsCore
     {
     public:
-        GraphicsCore(Window* pWindow);
+        GraphicsCore(NgineWindow* pWindow);
         ~GraphicsCore();
 
     private:

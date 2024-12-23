@@ -1,21 +1,25 @@
 #pragma once
 #include "Core.hxx"
+#include "GLFW/glfw3native.h"
 
 namespace Ngine
 {
 #if defined(TARGET_PLATFORM_WINDOWS)
-	class NGAPI Window;
+	class NGAPI NgineWindow;
 #endif
 
 #if !defined(TARGET_PLATFORM_XBOX)
-	class Window
+	class NgineWindow
 	{
 	public:
-		Window();
-		~Window();
+		NgineWindow();
+		~NgineWindow();
 
 #if defined(TARGET_PLATFORM_WINDOWS)
 		HWND GetWindowHandle();
+#elif defined(TARGET_PLATFORM_LINUX)
+		Window GetX11Window();
+		Display* GetX11Display();
 #endif
 
 		bool IsFullscreen();
@@ -32,11 +36,11 @@ namespace Ngine
 #endif
 
 #if defined(TARGET_PLATFORM_XBOX)
-	class NGAPI Window
+	class NGAPI NgineWindow
 	{
 	public:
-		Window();
-		~Window();
+		NgineWindow();
+		~NgineWindow();
 
 		bool UpdateWindow();
 	};

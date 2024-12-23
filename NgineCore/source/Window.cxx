@@ -1,11 +1,12 @@
 #include "Window.h"
 #include "Exception.h"
 #include "FileUtils.h"
+#include "GLFW/glfw3native.h"
 
 namespace Ngine
 {
 #if !defined(TARGET_PLATFORM_XBOX)
-	Window::Window()
+	NgineWindow::NgineWindow()
 	{
 		if (!glfwInit())
 			throw Exception();
@@ -26,52 +27,62 @@ namespace Ngine
 			throw Exception();
 	}
 
-	Window::~Window()
+	NgineWindow::~NgineWindow()
 	{
 		glfwDestroyWindow(pWindow);
 	}
 
 #if defined(TARGET_PLATFORM_WINDOWS)
-	HWND Window::GetWindowHandle()
+	HWND NgineWindow::GetWindowHandle()
 	{
 		return glfwGetWin32Window(pWindow);
 	}
+#elif defined(TARGET_PLATFORM_LINUX)
+	Window NgineWindow::GetX11Window()
+	{
+		return glfwGetX11Window(pWindow);
+	}
+
+	Display* NgineWindow::GetX11Display()
+	{
+		return glfwGetX11Display();
+	}
 #endif
 
-	bool Window::IsFullscreen()
+	bool NgineWindow::IsFullscreen()
 	{
 		return mIsFullscreen;
 	}
 
-	bool Window::UpdateWindow()
+	bool NgineWindow::UpdateWindow()
 	{
 		glfwPollEvents();
 		return !glfwWindowShouldClose(pWindow); //Negate statement for easier usage since it originally returns true when window recived close signal
 	}
 
-	uint32_t Window::GetWidth()
+	uint32_t NgineWindow::GetWidth()
 	{
 		return mSizeArray[0];
 	}
 
-	uint32_t Window::GetHeight()
+	uint32_t NgineWindow::GetHeight()
 	{
 		return mSizeArray[1];
 	}
 
 #else
 
-	Window::Window()
+	NgineWindow::NgineWindow()
 	{
 
 	}
 
-	Window::~Window()
+	NgineWindow::~NgineWindow()
 	{
 
 	}
 
-	bool Window::UpdateWindow()
+	bool NgineWindow::UpdateWindow()
 	{
 		return true;
 	}

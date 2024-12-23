@@ -32,7 +32,11 @@
 
 #elif defined(TARGET_PLATFORM_LINUX)
 
+#define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_EXPOSE_NATIVE_X11 //Allow glfw library to interact with X11
+
+//Xlib headers
+#include <X11/X.h>
 
 //GLFW headers
 #include <GLFW/glfw3.h>

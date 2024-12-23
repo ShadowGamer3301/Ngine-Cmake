@@ -12,7 +12,8 @@ namespace Ngine
     };
 
     const std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        
     };
 
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
@@ -33,21 +34,26 @@ namespace Ngine
     }
 
 
-    GraphicsCore::GraphicsCore(Window* pWindow)
+    GraphicsCore::GraphicsCore(NgineWindow* pWindow)
     {
         CreateInstance();
 
         bool devAutoPick = FileUtils::GetBoolFromConfig("Resource/ngine.ini", "General", "AutoPickDevice");
         int devIndex = FileUtils::GetIntegerFromConfig("Resource/ngine.ini", "General", "ManualDeviceIndex");
         
+        CreateSurface(pWindow);
+        
         if(devAutoPick)
             AutoPickPhysicalDevice();
         else
             PickPhysicalDevice(devIndex);
+
+        ObtainQueueIndexes();
     }
 
     GraphicsCore::~GraphicsCore()
     {
+        vkDestroySurfaceKHR(mInstance, mSurface, nullptr);
         vkDestroyInstance(mInstance, nullptr);
     }
 
@@ -69,8 +75,9 @@ namespace Ngine
         const char** glfwExtensions;
         glfwExtensions = glfwGetRequiredInstanceExtensions(&extCount);
         std::vector<const char*> extensions(glfwExtensions, glfwExtensions + extCount);
+        extensions.push_back("VK_KHR_xlib_surface"); //Add X11 extension manually since it won't be added automatically by glfw funcitons
 
-        if (enableVL)
+        if (enableVL) //If validation layers are enabled add debug extension
         {
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
@@ -115,6 +122,8 @@ namespace Ngine
         //Count all avaliable devices
         uint32_t devCount = 0;
         vkEnumeratePhysicalDevices(mInstance, &devCount, nullptr);
+
+        LOG_F(INFO, "Number of detected devices: %d", devCount);
 
         //If there isn't at least one device throw exception
         if(devCount < 1)
@@ -272,6 +281,47 @@ namespace Ngine
 
 		LOG_F(INFO, "Debug messenger set up!");
 	}
+
+    void GraphicsCore::CreateSurface(NgineWindow* pWindow)
+    {
+        VkXlibSurfaceCreateInfoKHR surfInfo = {};
+        surfInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+        surfInfo.window = pWindow->GetX11Window();
+        surfInfo.dpy = pWindow->GetX11Display();
+
+        VkResult res = vkCreateXlibSurfaceKHR(mInstance, &surfInfo, nullptr, &mSurface);
+        VK_THROW_IF_FAILED(res);
+
+        LOG_F(INFO, "Vulkan surface created (XLIB/X11 Mode)");
+    }
+
+    void GraphicsCore::ObtainQueueIndexes()
+    {
+        uint32_t queueCount = 0;
+        std::vector<VkQueueFamilyProperties> vecQueueProps;
+
+        vkGetPhysicalDeviceQueueFamilyProperties(mPhysDevice, &queueCount, nullptr);
+        vecQueueProps.resize(queueCount);
+
+        vkGetPhysicalDeviceQueueFamilyProperties(mPhysDevice, &queueCount, &vecQueueProps[0]);
+
+        int i = 0;
+	    VkBool32 presentSupport = false;
+
+        for(const auto& queueFamily : vecQueueProps)
+        {
+            if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+                mQueueData.mGraphicsQueueIndex = i;
+
+            vkGetPhysicalDeviceSurfaceSupportKHR(mPhysDevice, i, mSurface, &presentSupport);
+
+            if(presentSupport)
+                mQueueData.mPresentationQueueIndex = i;
+
+            i++;
+        }
+    }
+
 #elif defined(TARGET_PLATFORM_XBOX)
 
     GraphicsCore::GraphicsCore(Window* pWindow)

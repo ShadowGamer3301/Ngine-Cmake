@@ -19,7 +19,7 @@ namespace Ngine
 		virtual void ManageEvents() = 0;
 
 	protected:
-		Window* pWindow;
+		NgineWindow* pWindow;
 		GraphicsCore* pGfxCore;
 	};
 
