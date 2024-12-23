@@ -72,9 +72,61 @@ namespace Ngine
 
 #else
 
+	NgineWindow::WindowClass NgineWindow::WindowClass::wndClass;
+
+	NgineWindow::WindowClass::WindowClass() noexcept
+		: hInst(GetModuleHandle(nullptr))
+	{
+		WNDCLASSEX wcex = {};
+		wcex.cbSize = sizeof(WNDCLASSEX);
+		wcex.style = CS_HREDRAW | CS_VREDRAW;
+		wcex.lpfnWndProc = HandleMsgSetup;
+		wcex.cbClsExtra = 0;
+		wcex.cbWndExtra = 0;
+		wcex.hInstance = GetInstance();
+		wcex.hIcon = nullptr;
+		wcex.hCursor = nullptr;
+		wcex.hbrBackground = nullptr;
+		wcex.lpszMenuName = nullptr;
+		wcex.lpszClassName = GetName();
+		wcex.hIconSm = nullptr;
+
+		if (!RegisterClassEx(&wcex))
+		{
+			LOG_F(ERROR, "Failed to register window class");
+			throw Exception();
+		}
+	}
+
+	NgineWindow::WindowClass::~WindowClass()
+	{
+		UnregisterClass(GetName(), GetInstance());
+	}
+
+	const char* NgineWindow::WindowClass::GetName()
+	{
+		return wndClassName;
+	}
+
+	HINSTANCE NgineWindow::WindowClass::GetInstance()
+	{
+		return wndClass.hInst;
+	}
+
 	NgineWindow::NgineWindow()
 	{
+		int width = FileUtils::GetIntegerFromConfig("Resource/ngine.ini", "General", "WindowWidth");
+		int height = FileUtils::GetIntegerFromConfig("Resource/ngine.ini", "General", "WindowHeight");
 
+		hWnd = CreateWindowEx(0, WindowClass::GetName(), "Ngine Xbox runtime", WS_OVERLAPPEDWINDOW, 0, 0, width, height, nullptr, nullptr, WindowClass::GetInstance(), this);
+
+		if (hWnd == nullptr)
+		{
+			LOG_F(ERROR, "Failed to create Window!");
+			throw Exception();
+		}
+
+		ShowWindow(hWnd, SW_SHOW);
 	}
 
 	NgineWindow::~NgineWindow()

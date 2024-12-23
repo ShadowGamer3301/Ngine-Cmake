@@ -64,6 +64,14 @@
 		#define NGAPI __declspec(dllimport)
 	#endif
 
+//Windows headers
+#include <Windows.h>
+
+//DirectX headers
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include <Xinput.h>
+
 //mINI headers
 #include <mini/ini.h>
 
