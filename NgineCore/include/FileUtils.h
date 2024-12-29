@@ -7,6 +7,17 @@ namespace Ngine
 	class NGAPI FileUtils;
 #endif
 
+	struct BinaryConfig
+	{
+		bool WindowFullscreen = false;
+		uint32_t WindowWidth = 0;
+		uint32_t WindowHeight = 0;
+		bool AutoPickDevice = false;
+		uint16_t ManualDeviceIndex = 0;
+		bool EnableGfxDebugMode = false;
+		bool WindowResize = false;
+	};
+
 	class FileUtils
 	{
 	public:
@@ -20,5 +31,6 @@ namespace Ngine
 		static std::string GetStringFromConfig(std::string file, std::string section, std::string key);
 		static bool GetBoolFromConfig(std::string file, std::string section, std::string key);
 		static std::vector<std::string> GetFileNamesFromDirectory(std::string path);
+		static BinaryConfig LoadBinaryConfig(std::string file);
 	};
 }

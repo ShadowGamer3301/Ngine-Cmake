@@ -45,13 +45,27 @@
 //Vulkan headers
 #include <vulkan/vulkan.hpp>
 
+//GLM headers
+#include <glm/glm.hpp>
+#include <glm/vec4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 //mINI headers
 #include <mini/ini.h>
 
 //Loguru headers
 #include <loguru.hpp>
 
+//Crc32-11 headers
+#include <crc32.hpp>
+
+//Assimp headers
+#include <assimp/scene.h>
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
+
 #define VK_THROW_IF_FAILED(vkres) if(vkres != VK_SUCCESS) throw VulkanException(vkres)
+#define MAX_FRAMES_IN_FLIGHT 2
 
 #elif defined(TARGET_PLATFORM_XBOX)
 

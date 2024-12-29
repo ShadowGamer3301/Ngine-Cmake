@@ -1,5 +1,7 @@
 #include "FileUtils.h"
 #include "StringUtils.h"
+#include <cstdint>
+#include <fstream>
 
 namespace Ngine
 {
@@ -127,6 +129,63 @@ namespace Ngine
 			LOG_F(INFO, "File found: %s", s.c_str());
 			result.push_back(s);
 		}
+
+		return result;
+	}
+
+	BinaryConfig FileUtils::LoadBinaryConfig(std::string file)
+	{
+		std::ifstream cFile(file.c_str(), std::ifstream::binary | std::ifstream::in);
+
+		if(!cFile.is_open())
+		{
+			LOG_F(ERROR, "Cannot open file: %s", file.c_str());
+			return BinaryConfig();
+		}
+
+		uint32_t numBytesToMove = 0;
+		BinaryConfig result;
+
+		//Read and save first byte( Window fullscreen)
+		cFile.read(reinterpret_cast<char*>(&result.WindowFullscreen), sizeof(bool));
+		//Move by 1 byte 
+		numBytesToMove += sizeof(bool);
+		cFile.seekg(numBytesToMove);
+
+		//Read and save next 4 bytes (Window width)
+		cFile.read(reinterpret_cast<char*>(&result.WindowWidth), sizeof(uint32_t));
+		//Move by 4 bytes
+		numBytesToMove += sizeof(uint32_t);
+		cFile.seekg(numBytesToMove);		
+
+		//Read and save next 4 bytes (Window height)
+		cFile.read(reinterpret_cast<char*>(&result.WindowHeight), sizeof(uint32_t));
+		//Move by 4 bytes
+		numBytesToMove += sizeof(uint32_t);
+		cFile.seekg(numBytesToMove);
+
+		//Read and save next byte (Auto pick device)
+		cFile.read(reinterpret_cast<char*>(&result.AutoPickDevice), sizeof(bool));
+		//Move by 1 byte 
+		numBytesToMove += sizeof(bool);
+		cFile.seekg(numBytesToMove);
+
+		//Read and save next 2 bytes (Manual device index)
+		cFile.read(reinterpret_cast<char*>(&result.ManualDeviceIndex), sizeof(uint16_t));
+		//Move by 2 bytes
+		numBytesToMove += sizeof(uint16_t);
+		cFile.seekg(numBytesToMove);
+
+		//Read and save next byte (Enable gfx debug mode)
+		cFile.read(reinterpret_cast<char*>(&result.EnableGfxDebugMode), sizeof(bool));
+		//Move by 1 byte 
+		numBytesToMove += sizeof(bool);
+		cFile.seekg(numBytesToMove);
+
+		//Read and save next byte (Window resize)
+		cFile.read(reinterpret_cast<char*>(&result.WindowResize), sizeof(bool));
+
+		cFile.close();
 
 		return result;
 	}
