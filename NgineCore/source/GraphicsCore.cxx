@@ -1,6 +1,11 @@
 #include "GraphicsCore.h"
+#include "Core.hxx"
 #include "Exception.h"
 #include "FileUtils.h"
+#include "GameObject.h"
+#include <cstdint>
+#include <sys/types.h>
+#include <vulkan/vulkan_core.h>
 
 namespace Ngine
 {
@@ -78,6 +83,16 @@ namespace Ngine
                 vkFreeMemory(mDevice, vecModels[i].vecUniformMemory[j], nullptr);
 
             }
+        }
+
+        for (auto& shader : vecShaders)
+        {
+            vkDestroyPipeline(mDevice, shader.mPipeline, nullptr);
+            vkDestroyPipelineLayout(mDevice, shader.mPipelineLayout, nullptr);
+            vkDestroyShaderModule(mDevice, shader.mVertex, nullptr);
+            vkDestroyShaderModule(mDevice, shader.mFragment, nullptr);
+            vkDestroyDescriptorSetLayout(mDevice, shader.mDescLayout, nullptr);
+            vkDestroyDescriptorPool(mDevice, shader.mDescPool, nullptr);
         }
 
 
@@ -1062,6 +1077,59 @@ namespace Ngine
 
     }
 
+    void GraphicsCore::CreateDescriptorSets(GameObject3D* pGo)
+    {
+        for(auto& model : vecModels)
+        {
+            if(model.mId == pGo->mAssocMdl)
+            {
+                for(auto& shader : vecShaders)
+                {
+                    if(shader.mId == pGo->mAssocShader)
+                    {
+                        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader.mDescLayout);
+                        VkDescriptorSetAllocateInfo allocInfo = {};
+                        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                        allocInfo.descriptorPool = shader.mDescPool;
+                        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+                        allocInfo.pSetLayouts = layouts.data();
+
+                        for (auto& mesh : model.vecMeshes)
+                        {
+                            mesh.vecDescSets.resize(MAX_FRAMES_IN_FLIGHT);
+                            VkResult res = vkAllocateDescriptorSets(mDevice, &allocInfo, mesh.vecDescSets.data());
+                            VK_THROW_IF_FAILED(res);
+                        }
+                        
+
+                        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                            VkDescriptorBufferInfo bufferInfo = {};
+                            bufferInfo.buffer = model.vecUniformBuffers[i];
+                            bufferInfo.offset = 0;
+                            bufferInfo.range = sizeof(MVP);
+
+                            for (auto& mesh : model.vecMeshes)
+                            {
+                                VkWriteDescriptorSet descriptorWrite{};
+                                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                                descriptorWrite.dstSet = mesh.vecDescSets[i];
+                                descriptorWrite.dstBinding = 0;
+                                descriptorWrite.dstArrayElement = 0;
+                                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                                descriptorWrite.descriptorCount = 1;
+                                descriptorWrite.pBufferInfo = &bufferInfo;
+                                descriptorWrite.pImageInfo = nullptr;
+                                descriptorWrite.pTexelBufferView = nullptr;
+
+                                vkUpdateDescriptorSets(mDevice, 1, &descriptorWrite, 0, nullptr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     void GraphicsCore::DrawFrame(NgineWindow* pWin)
     {
         uint32_t bindCount = 0;
@@ -1109,6 +1177,56 @@ namespace Ngine
         scissor.extent = mSwapExtent;
         vkCmdSetScissor(vecCmdBuffers[mCurrentFrame], 0, 1, &scissor);
 
+        int shd_index = 0;
+
+        for(auto object : vecObjects)
+        {
+            for(int i = 0; i < vecShaders.size(); i++)
+            {
+                if(vecShaders[i].mId == object->mAssocShader)
+                    shd_index = i;
+            }
+
+            LOG_F(INFO, "Assoc shader found! Shader index = %d", shd_index);
+
+            if(object->mAssocMdl != 0 && object->mAssocShader != 0)
+            {
+                UpdateMvpBuffer(mCurrentFrame, object);
+                LOG_F(INFO, "MVP buffer updated!");
+                for(auto& model : vecModels)
+                {
+                    if(model.mId == object->mAssocMdl)
+                    {
+                        for(auto& mesh : model.vecMeshes)
+                        {
+                            VkBuffer vertexBuffers[] = { mesh.mVertexBuffer };
+                            VkDeviceSize offset[] = { 0 };
+                            vkCmdBindPipeline(vecCmdBuffers[mCurrentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vecShaders[shd_index].mPipeline);
+                            LOG_F(INFO, "Pipeline bound!");
+                            vkCmdBindVertexBuffers(vecCmdBuffers[mCurrentFrame], bindCount, 1, vertexBuffers, offset);
+                            LOG_F(INFO, "Vertex buffer bound!");
+                            if (mesh.mIndexBuffer != VK_NULL_HANDLE)
+                            {
+                                vkCmdBindIndexBuffer(vecCmdBuffers[mCurrentFrame], mesh.mIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+                                LOG_F(INFO, "Index buffer bound!");
+                                vkCmdBindDescriptorSets(vecCmdBuffers[mCurrentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vecShaders[shd_index].mPipelineLayout, 0, 1, &mesh.vecDescSets[mCurrentFrame], 0, nullptr);
+                                LOG_F(INFO, "Descriptor set bound!");
+                                vkCmdDrawIndexed(vecCmdBuffers[mCurrentFrame], mesh.mIndexCount, 1, 0, 0, 0);
+                                LOG_F(INFO, "Mesh drawn!");
+                                    
+                            }
+                            else
+                            {
+                                vkCmdDraw(vecCmdBuffers[mCurrentFrame], mesh.mVertexCount, 1, 0, 0);
+                                LOG_F(INFO, "Mesh drawn!");
+                            }
+                            bindCount++;
+                        }
+                    }
+                }
+            }
+        }
+
         vkCmdEndRenderPass(vecCmdBuffers[mCurrentFrame]);
 
 	    res = vkEndCommandBuffer(vecCmdBuffers[mCurrentFrame]);
@@ -1155,6 +1273,20 @@ namespace Ngine
 	    mCurrentFrame = (mCurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
+    void GraphicsCore::UpdateMvpBuffer(uint32_t frameIndex, GameObject3D* go)
+    {
+        MVP mvp = {};
+        mvp.model = go->GetWorldMatrix();
+        mvp.view = view;
+        mvp.projection = proj;
+
+        for(auto& model : vecModels)
+        {
+            if(model.mId == go->mAssocMdl)
+                memcpy(model.vecUniformBuffersMapped[frameIndex], &mvp, sizeof(mvp));
+        }
+    }
+
     std::array<VkVertexInputAttributeDescription, 3> Vertex::GetAttributeDescriptions()
     {
         std::array<VkVertexInputAttributeDescription, 3> attrDesc = {};
@@ -1190,7 +1322,178 @@ namespace Ngine
         return bindingDesc;
     }
 
+    uint32_t GraphicsCore::GenerateExclusiveModelId()
+    {
+        if(vecModels.empty())
+            return 1;
+        
+        uint32_t id = 1;
+        bool idFound = false;
 
+        do {
+            for(auto& model : vecModels)
+            {
+                if(model.mId == id)
+                    idFound = true;
+            }
+
+            if(idFound)
+                id++;
+
+        } while (idFound);
+
+        return id;
+    }
+
+    uint32_t GraphicsCore::GenerateExclusiveShaderId()
+    {
+        if(vecShaders.empty())
+            return 1;
+        
+        uint32_t id = 1;
+        bool idFound = false;
+
+        do {
+            for(auto& shader : vecShaders)
+            {
+                if(shader.mId == id)
+                    idFound = true;
+            }
+
+            if(idFound)
+                id++;
+
+        } while (idFound);
+
+        return id;
+    }
+
+    uint32_t GraphicsCore::LoadShader(const char* vertexPath, const char* fragmentPath)
+    {
+        Shader shader;
+
+        //Open and read data from vertex shader
+        std::ifstream vertexFile(vertexPath, std::ios::ate | std::ios::binary);
+        if (!vertexFile.is_open())
+        {
+            LOG_F(ERROR, "Cannot open %s", vertexPath);
+            return 0;
+        }
+
+        size_t vertexSize = (size_t)vertexFile.tellg();
+
+        std::vector<char> vertexShaderBuffer(vertexSize);
+        vertexFile.seekg(0);
+        vertexFile.read(vertexShaderBuffer.data(), vertexSize);
+        vertexFile.close();
+
+        //Open and read data from fragment shader
+        std::ifstream fragmentFile(fragmentPath, std::ios::ate | std::ios::binary);
+        if (!fragmentFile.is_open())
+        {
+            LOG_F(ERROR, "Cannot open %s", fragmentPath);
+            return 0;
+        }
+
+        size_t fragmentSize = (size_t)fragmentFile.tellg();
+
+        std::vector<char> fragmentShaderBuffer(fragmentSize);
+        fragmentFile.seekg(0);
+        fragmentFile.read(fragmentShaderBuffer.data(), fragmentSize);
+        fragmentFile.close();
+
+        //Create shader module for vertex shader
+        VkShaderModuleCreateInfo moduleInfo{};
+        moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        moduleInfo.codeSize = vertexShaderBuffer.size();
+        moduleInfo.pCode = reinterpret_cast<const uint32_t*>(vertexShaderBuffer.data());
+
+        VkResult res = vkCreateShaderModule(mDevice, &moduleInfo, nullptr, &shader.mVertex);
+        if(res != VK_SUCCESS)
+        {
+            LOG_F(ERROR, "Error creating vertex shader module! EC = %d", res);
+            return 0;
+        }
+
+        //Create shader module for fragment shader
+        ZeroMemory(&moduleInfo, sizeof(moduleInfo));
+        moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        moduleInfo.codeSize = fragmentShaderBuffer.size();
+        moduleInfo.pCode = reinterpret_cast<const uint32_t*>(fragmentShaderBuffer.data());
+        res = vkCreateShaderModule(mDevice, &moduleInfo, nullptr, &shader.mFragment);
+        if (res != VK_SUCCESS)
+        {
+            LOG_F(ERROR, "Error creating fragment shader module! EC = %d", res);
+            return 0;
+        }
+
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = shader.mVertex;
+        vertShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = shader.mFragment;
+        fragShaderStageInfo.pName = "main";
+
+        shader.mShaderStages[0] = vertShaderStageInfo;
+        shader.mShaderStages[1] = fragShaderStageInfo;
+
+        CreateDescriptorSetLayout(shader);
+        CreatePipeline(shader);
+        CreateDescriptorPool(shader);
+
+
+        shader.mId = GenerateExclusiveShaderId();
+        vecShaders.push_back(shader);
+
+        LOG_F(INFO, "Shader loaded with ID = %d", shader.mId);
+
+        return shader.mId;
+    }
+
+    uint32_t GraphicsCore::CreateModelFromVertexList(std::vector<Vertex>& v, std::vector<uint16_t>& i)
+    {
+        Model mdl = {};
+        mdl.vecMeshes.push_back(Mesh());
+        mdl.vecMeshes[0].mVertexCount = v.size();
+        mdl.vecMeshes[0].mIndexCount = i.size();
+
+        try
+        {
+            CreateVertexBuffer(mdl.vecMeshes[0], v);
+            CreateIndexBuffer(mdl.vecMeshes[0], i);
+            CreateMvpBuffer(mdl);
+        }
+        catch (const VulkanException& ve)
+        {
+            LOG_F(ERROR, "%s", ve.what());
+            return 0;
+        }
+
+
+        mdl.mId = GenerateExclusiveModelId();
+        vecModels.push_back(mdl);
+
+        LOG_F(INFO, "Model loaded with ID = %d", mdl.mId);
+        return mdl.mId;
+    }
+
+    void GraphicsCore::Temp_SetCamera(glm::vec3 pos)
+    {
+        view = glm::lookAt(glm::vec3(2.0f,2.0f,2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	    proj = glm::perspective(glm::radians(45.f), mSwapExtent.width / (float)mSwapExtent.height, 0.01f, 10.0f);
+    }
+
+    void GraphicsCore::AddGameObjectToDrawList(GameObject3D* pGo)
+    {
+        CreateDescriptorSets(pGo);
+        vecObjects.push_back(pGo);
+        LOG_F(INFO, "Game object added to draw list...");
+    }
 
 #elif defined(TARGET_PLATFORM_WINDOWS)
 

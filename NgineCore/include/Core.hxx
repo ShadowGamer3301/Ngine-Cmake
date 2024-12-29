@@ -52,6 +52,8 @@
 #include <glm/glm.hpp>
 #include <glm/vec4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/trigonometric.hpp>
 
 //mINI headers
 #include <mini/ini.h>
@@ -69,6 +71,7 @@
 
 #define VK_THROW_IF_FAILED(vkres) if(vkres != VK_SUCCESS) throw VulkanException(vkres)
 #define MAX_FRAMES_IN_FLIGHT 2
+#define ZeroMemory(p, size) memset(p, 0, size)
 
 #elif defined(TARGET_PLATFORM_XBOX)
 

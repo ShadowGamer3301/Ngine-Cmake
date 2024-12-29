@@ -2,6 +2,9 @@
 #include "Core.hxx"
 #include "Window.h"
 #include "Exception.h"
+#include "GameObject.h"
+#include <cstdint>
+#include <vector>
 
 namespace Ngine
 {
@@ -59,6 +62,7 @@ namespace Ngine
 	    friend class GraphicsCore;
 		friend class GameObject3D;
 	private:
+        uint32_t mId = 0;
 		std::vector<Mesh> vecMeshes;
 		std::vector<VkBuffer> vecUniformBuffers;
 		std::vector<VkDeviceMemory> vecUniformMemory;
@@ -79,6 +83,10 @@ namespace Ngine
         ~GraphicsCore();
 
         void DrawFrame(NgineWindow* pWin);
+        uint32_t LoadShader(const char* vertexPath, const char* fragmentPath);
+        uint32_t CreateModelFromVertexList(std::vector<Vertex>& v, std::vector<uint16_t>& i);
+        void Temp_SetCamera(glm::vec3 pos);
+        void AddGameObjectToDrawList(GameObject3D* pGo);
 
     private:
         void CreateInstance();
@@ -113,13 +121,18 @@ namespace Ngine
 		void CreateIndexBuffer(Mesh& m, std::vector<uint16_t> indices);
 		void CreateDescriptorSetLayout(Shader& shader);
 		void CreateMvpBuffer(Model& m);
-		//void UpdateMvpBuffer(uint32_t frameIndex, GameObject3D& go);
+		void UpdateMvpBuffer(uint32_t frameIndex, GameObject3D* go);
 		void CreateDescriptorPool(Shader& shader);
 		void CreateDescriptorSets(Model& m, Shader& shader);
+		void CreateDescriptorSets(GameObject3D* pGo);
+        uint32_t GenerateExclusiveShaderId();
+        uint32_t GenerateExclusiveModelId();
+        uint32_t GenerateExclusiveTextureId();
 
     private:
 		std::vector<Shader> vecShaders;
 		std::vector<Model> vecModels;
+        std::vector<GameObject3D*> vecObjects;
 		uint32_t mCurrentFrame = 0;
 		bool mFramebufferResized = false;
 		bool mPauseOnMimimize = false;
@@ -148,6 +161,7 @@ namespace Ngine
 		std::vector<VkSemaphore> vecRenderFinsihSemaphores;
 		std::vector<VkFence> vecFlightFences;
 		std::vector<VkCommandBuffer> vecCmdBuffers;
+        
     };
 #elif defined(TARGET_PLATFORM_WINDOWS)
     class NGAPI GraphicsCore
