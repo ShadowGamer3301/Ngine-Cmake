@@ -4,3 +4,4 @@
 #include "Window.h"
 #include "Application.h"
 #include "EntryPoint.hxx"
+#include "GraphicsCore.h"

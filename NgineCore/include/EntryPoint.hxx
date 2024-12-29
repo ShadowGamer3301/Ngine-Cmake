@@ -4,6 +4,8 @@
 
 extern Ngine::Application* Ngine::GenerateNewApplicationInterface();
 
+#if defined(TARGET_PLATFORM_WINDOWS) || defined(TARGET_PLATFORM_LINUX)
+
 int main(void) try
 {
 	auto app = Ngine::GenerateNewApplicationInterface();
@@ -17,3 +19,9 @@ catch (Ngine::Exception& e)
 	printf("%s", e.what());
 	return 1;
 }
+
+#elif defined(TARGET_PLATFORM_XBOX)
+
+int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInts, LPCSTR nCmdLine, int nCmdShow)
+
+#endif

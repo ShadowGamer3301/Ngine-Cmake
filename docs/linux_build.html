@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ngine Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header>
+        <h1>Ngine Documentation</h1>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar-left">
+            <h2>Components</h2>
+            <ul>
+                <li><a href="index.html">Introduction</a></li>
+                <li><a href="xbox_build.html">Building for Xbox</a></li>
+                <li><a href="win32_build.html">Building for Windows</a></li>
+                <li><a href="linux_build.html">Building for Linux</a></li>
+                <li><a href="#samples">Samples</a></li>
+            </ul>
+        </aside>
+
+        <main>
+            <div id="required_hardware">
+                <h1>Required hardware</h1>
+                <p>
+                    To build for Linux you need physical computer or virutal machine running GNU/Linux (see compatibility list down below).
+                </p>
+            </div>
+            <div id="required_software">
+                <h1>Required software</h1>
+                <p>This is list of all the software that you need to compile project for Linux.</p>
+                <ul>
+                    <li>Vulkan SDK: Version 1.3 or newer</li>
+                    <li>CMake: Version 3.12 or newer</li>
+                    <li>Ninja: newest version possible</li>
+                    <li>C++ compiler: LLVM Clang</li>
+                </ul>
+            </div>
+            <div id="bulding">
+                <h1>Building</h1>
+                <p>Steps to build project for Xbox</p>
+                <ol>
+                    <li>Open Ngine project as CMake project in Visual Studio 2022</li>
+                    <li>In configuration select "Linux debug" or "Linux release"</li>
+                    <li>Compile project</li>
+                </ol>
+            </div>
+
+            <div id="compatibility-list">
+                <h1>Compatibility list</h1>
+                <p>This table list all tested Linux distirbutions</p>
+                <table>
+                    <tr>
+                        <th>Distribution</th>
+                        <th>Building</th>
+                        <th>Running in deubg mode</th>
+                        <th>Running in release mode</th>
+                        <th>Known issues</th>
+                    </tr>
+                    <tr>
+                        <td>OpenSUSE tumbleweed</td>
+                        <td>Yes</td>
+                        <td>No</td>
+                        <td>Yes</td>
+                        <td>Zypper does not provide library files required for Vulkan validation layers</td>
+                    </tr>
+                    <tr>
+                        <td>Archlinux</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>None</td>
+                    </tr>
+                </table>
+            </div>
+        </main>
+
+        <aside class="sidebar-right">
+            <h2>In this page</h2>
+            <ul>
+                <li><a href="#required_hardware">Required hardware</a></li>
+                <li><a href="#required_software">Required software</a></li>
+                <li><a href="#building">Building</a></li>
+            </ul>
+        </aside>
+    </div>
+
+    <footer>
+    </footer>
+</body>
+
+</html>
