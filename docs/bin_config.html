@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ngine Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header>
+        <h1>Ngine Documentation</h1>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar-left">
+            <h2>Components</h2>
+            <ul>
+                <li><a href="index.html">Introduction</a></li>
+                <li><a href="xbox_build.html">Building for Xbox</a></li>
+                <li><a href="win32_build.html">Building for Windows</a></li>
+                <li><a href="linux_build.html">Building for Linux</a></li>
+                <li><a href="bin_config.html">Using binary configuration files</a></li>
+                <li><a href="#samples">Samples</a></li>
+            </ul>
+        </aside>
+
+        <main>
+            <div id="ncf_files">
+                <h1>NCF files</h1>
+                <p>
+                    NCF (Ngine configuration format) is a binary format created to hold configuration data for Ngine Core.
+                    Under any circumstances it should not be used as configuration file for game runtime, since Ngine does not provide
+                    any ability to read custom data from configuration file.
+                </p>
+            </div>
+            <div id="endian">
+                <h1>Little and Big endian</h1>
+                <p>
+                    NCF files are optimized to be used with Little endian processors (most of the AMD64 processors). Currently
+                    processors using Big endian are not supported by built-in functions of Ngine and data has to be converted manually.
+                </p>
+                
+            </div>
+            <div id="data">
+                <h1>Data</h1>
+                <p>This table list all data held in NCF file</p>
+                <table>
+                    <tr>
+                        <th>Name</th>
+                        <th>Offset (in bytes)</th>
+                        <th>Size (in bytes)</th>
+                        <th>Reccomended value type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>WindowFullscreen</td>
+                        <td>0</td>
+                        <td>1</td>
+                        <td>bool</td>
+                        <td>Marks if windows should be created in fullscreen mode. 0 for windowed mode, 1 for fullscreen mode</td>
+                    </tr>
+                    <tr>
+                        <td>WindowWidth</td>
+                        <td>1</td>
+                        <td>4</td>
+                        <td>uint32_t</td>
+                        <td>Sets window width in pixels. Any value above 0 is accepted.</td>
+                    </tr>
+                    <tr>
+                        <td>WindowHeight</td>
+                        <td>5</td>
+                        <td>4</td>
+                        <td>uint32_t</td>
+                        <td>Sets window height in pixels. Any value above 0 is accepted.</td>
+                    </tr>
+                    <tr>
+                        <td>AutoPickDevice</td>
+                        <td>9</td>
+                        <td>1</td>
+                        <td>bool</td>
+                        <td>Sets if GPU used for rendering will be specified by user or if Ngine should pick the most suitable one.</td>
+                    </tr>
+                    <tr>
+                        <td>ManualDeviceIndex</td>
+                        <td>10</td>
+                        <td>2</td>
+                        <td>uint16_t</td>
+                        <td>Marks which GPU should be used for rendering if AutoPickDevice is set to false. Counting starts from 0.</td>
+                    </tr>
+                    <tr>
+                        <td>EnableGfxDebugMode</td>
+                        <td>12</td>
+                        <td>1</td>
+                        <td>bool</td>
+                        <td>Marks if Vulkan validation layers or D3D11 debug mode should be switched on.</td>
+                    </tr>
+                    <tr>
+                        <td>WindowResize</td>
+                        <td>13</td>
+                        <td>1</td>
+                        <td>bool</td>
+                        <td>Marks if dynamic resizing for window should be allowed.</td>
+                    </tr>
+                </table>
+            </div>
+        </main>
+
+        <aside class="sidebar-right">
+            <h2>In this page</h2>
+            <ul>
+                <li><a href="#ncf_files">NCF files</a></li>
+                <li><a href="#endian">Little and Big endian</a></li>
+                <li><a href="#data">Data</a></li>
+            </ul>
+        </aside>
+    </div>
+
+    <footer>
+    </footer>
+</body>
+
+</html>
