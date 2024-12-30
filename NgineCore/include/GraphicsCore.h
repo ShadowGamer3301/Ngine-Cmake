@@ -3,12 +3,53 @@
 #include "Window.h"
 #include "Exception.h"
 #include "GameObject.h"
-#include <cstdint>
-#include <vector>
 
 namespace Ngine
 {
 #if defined(TARGET_PLATFORM_LINUX)
+
+    class Camera
+    {
+    public:
+        Camera();
+        void SetProjectionValues(float fov, float aspectRatio, float nz, float fz);
+
+        const glm::mat4 GetViewMatrix() const;
+        const glm::mat4 GetProjectionMatrix() const;
+
+        const glm::vec3 GetPositionVec3() const;
+        const glm::vec3 GetRotationVec3() const;
+        
+        void SetPosition(const glm::vec3& pos);
+        void AdjustPosition(const glm::vec3& pos);
+        void SetRotation(const glm::vec3& pos);
+        void AdjustRotation(const glm::vec3& pos);
+
+        const glm::vec3& GetForwardVector();
+        const glm::vec3& GetRightVector();
+        const glm::vec3& GetBackwardVector();
+        const glm::vec3& GetLeftVector();
+        
+    private:
+        void UpdateViewMatrix();
+
+        glm::vec3 pos;
+        glm::vec3 rot;
+
+        const glm::vec3 DEFAULT_FORWARD_VECTOR = glm::vec3(0.0f, 0.0f, 1.0f);
+        const glm::vec3 DEFAULT_UP_VECTOR = glm::vec3(0.0f, -1.0f, 0.0f);
+        const glm::vec3 DEFAULT_BACKWARD_VECTOR = glm::vec3(0.0f, 0.0f, -1.0f);
+        const glm::vec3 DEFAULT_LEFT_VECTOR = glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 DEFAULT_RIGHT_VECTOR = glm::vec3(-1.0f, 0.0f, 0.0f);
+
+        glm::vec3 vec_forward;
+        glm::vec3 vec_left;
+        glm::vec3 vec_right;
+        glm::vec3 vec_backward;
+
+        glm::mat4 proj;
+        glm::mat4 view;
+    };
 
     struct Vertex
     {
@@ -87,6 +128,8 @@ namespace Ngine
         uint32_t CreateModelFromVertexList(std::vector<Vertex>& v, std::vector<uint16_t>& i);
         void Temp_SetCamera(glm::vec3 pos);
         void AddGameObjectToDrawList(GameObject3D* pGo);
+        uint32_t LoadIntermediateModel(const char* modelPath);
+        void SetCamera(Camera& c);
 
     private:
         void CreateInstance();
@@ -128,6 +171,8 @@ namespace Ngine
         uint32_t GenerateExclusiveShaderId();
         uint32_t GenerateExclusiveModelId();
         uint32_t GenerateExclusiveTextureId();
+        void ProcessNode(aiNode* pNode, const aiScene* pScene, Model& outMdl);
+        Mesh ProcessMesh(aiMesh* pMesh, const aiScene* pScene);
 
     private:
 		std::vector<Shader> vecShaders;

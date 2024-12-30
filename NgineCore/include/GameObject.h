@@ -11,7 +11,9 @@ namespace Ngine
         ~GameObject3D() = default;
         
 		void SetScale(glm::vec3& scale);
+		void SetScale(const glm::vec3& scale);
 		void AdjustScale(glm::vec3& scale);
+		void AdjustScale(const glm::vec3& scale);
 		void SetRotation(glm::vec3& rotation);
 		void AdjustRotation(glm::vec3& rotation);
 		void SetTranslation(glm::vec3& translation);

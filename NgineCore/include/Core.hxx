@@ -64,6 +64,9 @@
 //Crc32-11 headers
 #include <crc32.hpp>
 
+//Tga headers
+#include <tga.h>
+
 //Assimp headers
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>

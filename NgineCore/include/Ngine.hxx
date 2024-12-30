@@ -5,3 +5,6 @@
 #include "Application.h"
 #include "EntryPoint.hxx"
 #include "GraphicsCore.h"
+#include "Event.h"
+#include "GameObject.h"
+#include "FileUtils.h"

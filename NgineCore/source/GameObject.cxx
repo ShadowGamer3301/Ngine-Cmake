@@ -15,7 +15,19 @@ namespace Ngine {
         RecalculateWorld();
     }
 
+    void GameObject3D::SetScale(const glm::vec3& scale)
+    {
+        mScale = scale;
+        RecalculateWorld();
+    }
+
     void GameObject3D::AdjustScale(glm::vec3& scale)
+    {
+        mScale += scale;
+        RecalculateWorld();
+    }
+
+    void GameObject3D::AdjustScale(const glm::vec3& scale)
     {
         mScale += scale;
         RecalculateWorld();

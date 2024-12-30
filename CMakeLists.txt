@@ -8,6 +8,7 @@ project(Loguru VERSION 2.1.0)
 project(NgineCore VERSION 1.0)
 project(NgineEditor VERSION 1.0)
 project(NgineRuntime VERSION 1.0)
+project(tga)
 
 #Windows build settings
 if(TARGET_PLATFORM_WINDOWS)
@@ -63,6 +64,7 @@ elseif(TARGET_PLATFORM_LINUX) #Linux build settings
 	add_subdirectory(loguru)
 	add_subdirectory(NgineCore)
 	add_subdirectory(NgineRuntime)
+	add_subdirectory(tga)
 
 	file(COPY "Resource" DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 

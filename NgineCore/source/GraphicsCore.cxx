@@ -3,8 +3,17 @@
 #include "Exception.h"
 #include "FileUtils.h"
 #include "GameObject.h"
+#include "assimp/Importer.hpp"
+
+#include "assimp/mesh.h"
+#include "assimp/postprocess.h"
+#include "assimp/scene.h"
 #include <cstdint>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 #include <sys/types.h>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 namespace Ngine
@@ -639,8 +648,8 @@ namespace Ngine
         rasterizer.rasterizerDiscardEnable = VK_FALSE;
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.0f;
-        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
         rasterizer.depthBiasConstantFactor = 0.0f;
         rasterizer.depthBiasClamp = 0.0f;
@@ -1029,7 +1038,7 @@ namespace Ngine
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = 1;
         poolInfo.pPoolSizes = &poolSize;
-        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolInfo.maxSets = (MAX_FRAMES_IN_FLIGHT * 200);
 
         VkResult res = vkCreateDescriptorPool(mDevice, &poolInfo, nullptr, &shader.mDescPool);
         VK_THROW_IF_FAILED(res);
@@ -1099,6 +1108,7 @@ namespace Ngine
                             mesh.vecDescSets.resize(MAX_FRAMES_IN_FLIGHT);
                             VkResult res = vkAllocateDescriptorSets(mDevice, &allocInfo, mesh.vecDescSets.data());
                             VK_THROW_IF_FAILED(res);
+                            LOG_F(INFO, "Descriptor set allocated!");
                         }
                         
 
@@ -1187,12 +1197,9 @@ namespace Ngine
                     shd_index = i;
             }
 
-            LOG_F(INFO, "Assoc shader found! Shader index = %d", shd_index);
-
             if(object->mAssocMdl != 0 && object->mAssocShader != 0)
             {
                 UpdateMvpBuffer(mCurrentFrame, object);
-                LOG_F(INFO, "MVP buffer updated!");
                 for(auto& model : vecModels)
                 {
                     if(model.mId == object->mAssocMdl)
@@ -1202,23 +1209,17 @@ namespace Ngine
                             VkBuffer vertexBuffers[] = { mesh.mVertexBuffer };
                             VkDeviceSize offset[] = { 0 };
                             vkCmdBindPipeline(vecCmdBuffers[mCurrentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vecShaders[shd_index].mPipeline);
-                            LOG_F(INFO, "Pipeline bound!");
                             vkCmdBindVertexBuffers(vecCmdBuffers[mCurrentFrame], bindCount, 1, vertexBuffers, offset);
-                            LOG_F(INFO, "Vertex buffer bound!");
                             if (mesh.mIndexBuffer != VK_NULL_HANDLE)
                             {
                                 vkCmdBindIndexBuffer(vecCmdBuffers[mCurrentFrame], mesh.mIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
-                                LOG_F(INFO, "Index buffer bound!");
                                 vkCmdBindDescriptorSets(vecCmdBuffers[mCurrentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vecShaders[shd_index].mPipelineLayout, 0, 1, &mesh.vecDescSets[mCurrentFrame], 0, nullptr);
-                                LOG_F(INFO, "Descriptor set bound!");
                                 vkCmdDrawIndexed(vecCmdBuffers[mCurrentFrame], mesh.mIndexCount, 1, 0, 0, 0);
-                                LOG_F(INFO, "Mesh drawn!");
                                     
                             }
                             else
                             {
                                 vkCmdDraw(vecCmdBuffers[mCurrentFrame], mesh.mVertexCount, 1, 0, 0);
-                                LOG_F(INFO, "Mesh drawn!");
                             }
                             bindCount++;
                         }
@@ -1331,6 +1332,8 @@ namespace Ngine
         bool idFound = false;
 
         do {
+            idFound = false;
+
             for(auto& model : vecModels)
             {
                 if(model.mId == id)
@@ -1354,6 +1357,8 @@ namespace Ngine
         bool idFound = false;
 
         do {
+            idFound = false;
+
             for(auto& shader : vecShaders)
             {
                 if(shader.mId == id)
@@ -1478,13 +1483,13 @@ namespace Ngine
         mdl.mId = GenerateExclusiveModelId();
         vecModels.push_back(mdl);
 
-        LOG_F(INFO, "Model loaded with ID = %d", mdl.mId);
+        LOG_F(INFO, "Model created with ID = %d", mdl.mId);
         return mdl.mId;
     }
 
     void GraphicsCore::Temp_SetCamera(glm::vec3 pos)
     {
-        view = glm::lookAt(glm::vec3(2.0f,2.0f,2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        view = glm::lookAt(glm::vec3(5.0f,5.0f,5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
 	    proj = glm::perspective(glm::radians(45.f), mSwapExtent.width / (float)mSwapExtent.height, 0.01f, 10.0f);
     }
 
@@ -1493,6 +1498,151 @@ namespace Ngine
         CreateDescriptorSets(pGo);
         vecObjects.push_back(pGo);
         LOG_F(INFO, "Game object added to draw list...");
+    }
+
+    uint32_t GraphicsCore::LoadIntermediateModel(const char* modelPath)
+    {
+        std::string finalPath = "Resource/Model/" + FileUtils::CutPathToFileName(modelPath);
+        LOG_F(INFO, "Beggining to load %s", finalPath.c_str());
+
+        Assimp::Importer imp;
+        const aiScene* pScene = imp.ReadFile(finalPath.c_str(), aiProcess_Triangulate);
+
+        if(pScene == nullptr)
+        {
+            LOG_F(ERROR, "Cannot open 3D file");
+            return 0;
+        }
+
+        Model result;
+        LOG_F(INFO, "This model contains %d meshes", pScene->mNumMeshes);
+
+        ProcessNode(pScene->mRootNode, pScene, result);
+
+        CreateMvpBuffer(result);
+        result.mId = GenerateExclusiveModelId();
+        vecModels.push_back(result);
+
+        LOG_F(INFO, "Model %s loaded with id = %d", finalPath.c_str(), result.mId);
+
+        return result.mId;
+    }
+
+    void GraphicsCore::ProcessNode(aiNode* pNode, const aiScene* pScene, Model& outMdl)
+    {
+        for(uint32_t i = 0; i < pNode->mNumMeshes; i++)
+        {
+            outMdl.vecMeshes.push_back(ProcessMesh(pScene->mMeshes[pNode->mMeshes[i]], pScene));
+        }
+
+        for(uint32_t i = 0; i < pNode->mNumChildren; i++)
+        {
+            ProcessNode(pNode->mChildren[i], pScene, outMdl);
+        }
+    }
+
+    Mesh GraphicsCore::ProcessMesh(aiMesh* pMesh, const aiScene* pScene)
+    {
+        Mesh result;
+
+        std::vector<Vertex> verts;
+        std::vector<uint16_t> inds;
+
+        for(uint32_t i = 0; i < pMesh->mNumVertices; i++)
+        {
+            Vertex v = {};
+
+            v.pos.x = pMesh->mVertices[i].x;
+            v.pos.y = pMesh->mVertices[i].y;
+            v.pos.z = pMesh->mVertices[i].z;
+            
+            if(pMesh->mTextureCoords[0])
+            {
+                v.uv.x = pMesh->mTextureCoords[0][i].x;
+                v.uv.y = pMesh->mTextureCoords[0][i].y;
+            }
+
+            verts.push_back(v);
+        }
+
+        for(uint32_t i = 0; i < pMesh->mNumFaces; i++)
+        {
+            aiFace face = pMesh->mFaces[i];
+            for(uint32_t j = 0; j < face.mNumIndices; j++)
+                inds.push_back((uint16_t)face.mIndices[j]);
+        }
+
+        result.mIndexCount = inds.size();
+        result.mVertexCount = verts.size();
+
+        CreateVertexBuffer(result, verts);
+        CreateIndexBuffer(result, inds);
+
+        return result;
+    }
+
+    void GraphicsCore::SetCamera(Camera& c)
+    {
+        view = c.GetViewMatrix();
+        proj = c.GetProjectionMatrix();
+    }
+
+    Camera::Camera()
+    {
+        pos = glm::vec3(5.0f, 5.0f, 5.0f);
+        rot = glm::vec3(0.0f, 0.0f, 0.0f);
+        UpdateViewMatrix();
+    }
+
+    void Camera::SetProjectionValues(float fov, float aspectRatio, float nz, float fz)
+    {
+        float fovRadians = glm::radians(fov);
+        proj = glm::perspective(fovRadians, aspectRatio, nz, fz);
+    }
+
+    void Camera::UpdateViewMatrix()
+    {
+        view = glm::lookAt(glm::vec3(0,0,0), glm::vec3(0,0,-1), glm::vec3(0,-1,0));
+
+        glm::mat4 rotM = glm::mat4(1.0f);
+		glm::mat4 transM;
+
+        rotM = glm::rotate(rotM, glm::radians(rot.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		rotM = glm::rotate(rotM, glm::radians(rot.y), glm::vec3(0.0f, -1.0f, 0.0f));
+		rotM = glm::rotate(rotM, glm::radians(rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        transM = glm::translate(glm::mat4(1.0f), pos);
+
+        view = view * rotM;
+        view = view * transM;
+    }
+
+    const glm::mat4 Camera::GetProjectionMatrix() const
+    {
+        return proj;
+    }
+
+    const glm::mat4 Camera::GetViewMatrix() const
+    {
+        return view;
+    }
+
+    void Camera::SetPosition(const glm::vec3& new_pos)
+    {
+        pos = new_pos;
+        UpdateViewMatrix();
+    }
+
+    void Camera::AdjustPosition(const glm::vec3& new_pos)
+    {
+        pos += new_pos;
+        UpdateViewMatrix();
+    }
+
+    void Camera::AdjustRotation(const glm::vec3& new_rot)
+    {
+        rot += new_rot;
+
+        UpdateViewMatrix();
     }
 
 #elif defined(TARGET_PLATFORM_WINDOWS)

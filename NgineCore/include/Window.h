@@ -1,6 +1,5 @@
 #pragma once
 #include "Core.hxx"
-#include "GLFW/glfw3native.h"
 
 namespace Ngine
 {
@@ -11,6 +10,8 @@ namespace Ngine
 #if !defined(TARGET_PLATFORM_XBOX)
 	class NgineWindow
 	{
+		static void KeyInputCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+		static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 	public:
 		NgineWindow();
 		~NgineWindow();
