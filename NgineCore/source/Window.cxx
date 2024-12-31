@@ -1,11 +1,34 @@
 #include "Window.h"
 #include "Exception.h"
 #include "FileUtils.h"
-#include "GLFW/glfw3native.h"
+#include "Event.h"
 
 namespace Ngine
 {
 #if !defined(TARGET_PLATFORM_XBOX)
+	void NgineWindow::CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+	{
+		EventCursorMove* pEvent = new EventCursorMove();
+
+		pEvent->pos_x = xpos;
+		pEvent->pos_y = ypos;
+		pEvent->mType = EventType::EventType_CursorMove;
+
+		EventHandler::AddEventToBuffer(pEvent, EventType::EventType_CursorMove);
+		
+	}
+
+	void NgineWindow::KeyInputCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+	{
+		EventKeyAction* pEvent = new EventKeyAction();
+
+		pEvent->mKey = key;
+		pEvent->mPressed = (action == GLFW_PRESS || action == GLFW_REPEAT);
+		pEvent->mType = EventType::EventType_KeyAction;
+
+		EventHandler::AddEventToBuffer(pEvent, EventType::EventType_KeyAction);
+	}
+
 	NgineWindow::NgineWindow()
 	{
 		if (!glfwInit())
@@ -25,6 +48,9 @@ namespace Ngine
 
 		if (!pWindow)
 			throw Exception();
+
+		glfwSetKeyCallback(pWindow, KeyInputCallback);
+		glfwSetCursorPosCallback(pWindow, CursorPosCallback);
 	}
 
 	NgineWindow::~NgineWindow()

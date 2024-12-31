@@ -44,11 +44,18 @@
             </div>
             <div id="bulding">
                 <h1>Building</h1>
-                <p>Steps to build project for Xbox</p>
+                <p>Steps to build project for Linux (using Visual Studio on Windows)</p>
                 <ol>
                     <li>Open Ngine project as CMake project in Visual Studio 2022</li>
                     <li>In configuration select "Linux debug" or "Linux release"</li>
                     <li>Compile project</li>
+                </ol>
+
+                <p>Steps to build project for Linux (using CMake CLI and Ninja on Linux)</p>
+                <ol>
+                    <li>Run: cmake --build --preset "Linux Debug" or "Linux Release"</li>
+                    <li>Navigate to output directory</li>
+                    <li>Run: ninja</li>
                 </ol>
             </div>
 

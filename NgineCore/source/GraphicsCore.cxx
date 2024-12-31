@@ -2,6 +2,19 @@
 #include "Core.hxx"
 #include "Exception.h"
 #include "FileUtils.h"
+#include "GameObject.h"
+#include "assimp/Importer.hpp"
+
+#include "assimp/mesh.h"
+#include "assimp/postprocess.h"
+#include "assimp/scene.h"
+#include <cstdint>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
+#include <sys/types.h>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace Ngine
 {
@@ -49,10 +62,64 @@ namespace Ngine
             PickPhysicalDevice(devIndex);
 
         ObtainQueueIndexes();
+        CreateLogicDevice();
+        CreateSwapchain(pWindow);
+        CreateImageViews();
+        CreateRenderPass();
+        CreateFrameBuffers();
+        CreateCommandPool();
+        CreateCommandBuffer();
+        CreateSyncObjects();
     }
 
     GraphicsCore::~GraphicsCore()
     {
+        vkDeviceWaitIdle(mDevice);
+
+        for (size_t i = 0; i < vecModels.size(); i++)
+        {
+            for (size_t j = 0; j < vecModels[i].vecMeshes.size(); j++)
+            {
+                vkFreeMemory(mDevice, vecModels[i].vecMeshes[j].mVertexMemory, nullptr);
+                vkDestroyBuffer(mDevice, vecModels[i].vecMeshes[j].mVertexBuffer, nullptr);
+                vkFreeMemory(mDevice, vecModels[i].vecMeshes[j].mIndexMemory, nullptr);
+                vkDestroyBuffer(mDevice, vecModels[i].vecMeshes[j].mIndexBuffer, nullptr);
+            }
+
+            for (size_t j = 0; j < vecModels[i].vecUniformBuffers.size(); j++)
+            {
+                vkDestroyBuffer(mDevice, vecModels[i].vecUniformBuffers[j], nullptr);
+                vkFreeMemory(mDevice, vecModels[i].vecUniformMemory[j], nullptr);
+
+            }
+        }
+
+        for (auto& shader : vecShaders)
+        {
+            vkDestroyPipeline(mDevice, shader.mPipeline, nullptr);
+            vkDestroyPipelineLayout(mDevice, shader.mPipelineLayout, nullptr);
+            vkDestroyShaderModule(mDevice, shader.mVertex, nullptr);
+            vkDestroyShaderModule(mDevice, shader.mFragment, nullptr);
+            vkDestroyDescriptorSetLayout(mDevice, shader.mDescLayout, nullptr);
+            vkDestroyDescriptorPool(mDevice, shader.mDescPool, nullptr);
+        }
+
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            vkDestroySemaphore(mDevice, vecImgAvSemaphores[i], nullptr);
+            vkDestroySemaphore(mDevice, vecRenderFinsihSemaphores[i], nullptr);
+            vkDestroyFence(mDevice, vecFlightFences[i], nullptr);
+        }
+
+        vkDestroyCommandPool(mDevice, mCmdPool, nullptr);
+        for (auto framebuffer : vecFrameBuffers)
+            vkDestroyFramebuffer(mDevice, framebuffer, nullptr);
+	    vkDestroyRenderPass(mDevice, mRenderPass, nullptr);
+        for (auto imageView : vecSwapImageViews)
+		    vkDestroyImageView(mDevice, imageView, nullptr);
+        vkDestroySwapchainKHR(mDevice, mSwapchain, nullptr);
+        vkDestroyDevice(mDevice, nullptr);
         vkDestroySurfaceKHR(mInstance, mSurface, nullptr);
         vkDestroyInstance(mInstance, nullptr);
     }
@@ -320,6 +387,1262 @@ namespace Ngine
 
             i++;
         }
+    }
+
+    void GraphicsCore::CreateLogicDevice()
+    {
+        bool enableVL = FileUtils::GetBoolFromConfig("Resource/ngine.ini", "General", "EnableGfxDebugMode");
+        
+        if(!mQueueData.mGraphicsQueueIndex.has_value() || !mQueueData.mPresentationQueueIndex.has_value())
+        {
+            LOG_F(ERROR, "Queue family indexes are missing...");
+            throw Exception();
+        }
+
+        float priority = 1.0f;
+        VkDeviceQueueCreateInfo graphicsQueueInfo = {};
+        graphicsQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        graphicsQueueInfo.pQueuePriorities = &priority;
+        graphicsQueueInfo.queueCount = 1;
+        graphicsQueueInfo.queueFamilyIndex = mQueueData.mGraphicsQueueIndex.value();
+
+        VkDeviceQueueCreateInfo presentationQueueInfo = {};
+        presentationQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        presentationQueueInfo.pQueuePriorities = &priority;
+        presentationQueueInfo.queueCount = 1;
+        presentationQueueInfo.queueFamilyIndex = mQueueData.mPresentationQueueIndex.value();
+
+        VkDeviceQueueCreateInfo queueArray[] = { graphicsQueueInfo, presentationQueueInfo };
+
+        VkPhysicalDeviceFeatures devFeatures = {};
+
+        VkDeviceCreateInfo devInfo = {};
+        devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        devInfo.pQueueCreateInfos = queueArray;
+        devInfo.queueCreateInfoCount = sizeof(queueArray) / sizeof(VkDeviceQueueCreateInfo);
+        devInfo.pEnabledFeatures = &devFeatures;
+        devInfo.enabledExtensionCount = deviceExtensions.size();
+        devInfo.ppEnabledExtensionNames = deviceExtensions.data();
+        
+        if (enableVL != 0)
+        {
+            devInfo.enabledLayerCount = validationLayers.size();
+            devInfo.ppEnabledLayerNames = validationLayers.data();
+        }
+
+        VkResult res = vkCreateDevice(mPhysDevice, &devInfo, nullptr, &mDevice);
+        VK_THROW_IF_FAILED(res);
+        
+        vkGetDeviceQueue(mDevice, mQueueData.mGraphicsQueueIndex.value(), 0, &mGraphicsQueue);
+        vkGetDeviceQueue(mDevice, mQueueData.mPresentationQueueIndex.value(), 0, &mPresentationQueue);
+    }
+
+    void GraphicsCore::CreateSwapchain(NgineWindow* pWindow)
+    {
+        const auto avaliableFormats = ObtainSurfaceFormats();
+	    const auto avaliableModes = ObtainSurfaceModes();
+
+        VkSurfaceFormatKHR surfFormat = ChooseSurfaceFormat(avaliableFormats);
+	    VkPresentModeKHR presentMode = ChoosePresentMode(avaliableModes);
+	    VkExtent2D extent = ChooseSwapExtent(pWindow);
+
+        VkSurfaceCapabilitiesKHR caps = {};
+	    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mPhysDevice, mSurface, &caps);
+
+	    uint32_t imageCount = caps.minImageCount + 1;
+        if (caps.maxImageCount > 0 && imageCount > caps.maxImageCount)
+		imageCount = caps.maxImageCount;
+
+        VkSwapchainCreateInfoKHR swapInfo = {};
+        swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        swapInfo.surface = mSurface;
+        swapInfo.imageFormat = surfFormat.format;
+        swapInfo.imageColorSpace = surfFormat.colorSpace;
+        swapInfo.imageExtent = extent;
+        swapInfo.imageArrayLayers = 1;
+        swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        swapInfo.minImageCount = imageCount;
+        swapInfo.preTransform = caps.currentTransform;
+        swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        swapInfo.presentMode = presentMode;
+        swapInfo.clipped = VK_TRUE;
+        swapInfo.oldSwapchain = VK_NULL_HANDLE;
+
+        uint32_t queueFamilyIndices[] = { mQueueData.mGraphicsQueueIndex.value(), mQueueData.mPresentationQueueIndex.value() };
+
+        if (queueFamilyIndices[0] != queueFamilyIndices[1])
+        {
+            swapInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+            swapInfo.queueFamilyIndexCount = 2;
+            swapInfo.pQueueFamilyIndices = queueFamilyIndices;
+        }
+        else
+        {
+            swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            swapInfo.queueFamilyIndexCount = 0;
+            swapInfo.pQueueFamilyIndices = nullptr;
+        }
+
+        VkResult res = vkCreateSwapchainKHR(mDevice, &swapInfo, nullptr, &mSwapchain);
+        VK_THROW_IF_FAILED(res);
+
+        vkGetSwapchainImagesKHR(mDevice, mSwapchain, &imageCount, nullptr);
+        vecSwapImages.resize(imageCount);
+        vkGetSwapchainImagesKHR(mDevice, mSwapchain, &imageCount, &vecSwapImages[0]);
+
+        mSwapFormat = swapInfo.imageFormat;
+        mSwapExtent = extent;
+    }
+
+    std::vector<VkSurfaceFormatKHR> GraphicsCore::ObtainSurfaceFormats()
+    {
+        uint32_t formatCount = 0;
+        std::vector<VkSurfaceFormatKHR> formatData;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(mPhysDevice, mSurface, &formatCount, nullptr);
+
+        if (formatCount == 0)
+            throw Exception();
+        
+        formatData.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(mPhysDevice, mSurface, &formatCount, &formatData[0]);
+
+        return formatData;
+    }
+
+    std::vector<VkPresentModeKHR> GraphicsCore::ObtainSurfaceModes()
+    {
+        uint32_t modeCount = 0;
+        std::vector<VkPresentModeKHR> modeData;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(mPhysDevice, mSurface, &modeCount, nullptr);
+
+        if (modeCount == 0)
+            throw Exception();
+        
+        modeData.resize(modeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(mPhysDevice, mSurface, &modeCount, &modeData[0]);
+
+        return modeData;
+    }
+
+    VkSurfaceFormatKHR GraphicsCore::ChooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& avaliableFormats)
+    {
+        for (const auto& format : avaliableFormats)
+        {
+            if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+                return format;
+        }
+
+        return avaliableFormats[0];
+    }
+
+    VkPresentModeKHR GraphicsCore::ChoosePresentMode(const std::vector<VkPresentModeKHR>& avaliableModes)
+    {
+        for (const auto& mode : avaliableModes)
+        {
+            if (mode == VK_PRESENT_MODE_MAILBOX_KHR)
+                return mode;
+        }
+
+        return VK_PRESENT_MODE_FIFO_KHR;
+    }
+
+    VkExtent2D GraphicsCore::ChooseSwapExtent(NgineWindow* pWindow)
+    {
+        VkSurfaceCapabilitiesKHR capabilities;
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mPhysDevice, mSurface, &capabilities);
+
+	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+		return capabilities.currentExtent;
+	else
+	{
+		int width = pWindow->GetWidth(), height = pWindow->GetHeight();
+
+            VkExtent2D actualExtent = {
+                static_cast<uint32_t>(width),
+                static_cast<uint32_t>(height)
+            };
+
+            actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+            actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+            return actualExtent;
+        }
+    }
+
+    void GraphicsCore::CreateImageViews()
+    {
+        vecSwapImageViews.resize(vecSwapImages.size());
+
+        for (size_t i = 0; i < vecSwapImages.size(); i++)
+        {
+            VkImageViewCreateInfo imageInfo = {};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            imageInfo.image = vecSwapImages.at(i);
+            imageInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            imageInfo.format = mSwapFormat;
+            imageInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            imageInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            imageInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            imageInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            imageInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageInfo.subresourceRange.baseMipLevel = 0;
+            imageInfo.subresourceRange.levelCount = 1;
+            imageInfo.subresourceRange.baseArrayLayer = 0;
+            imageInfo.subresourceRange.layerCount = 1;
+
+            VkResult res = vkCreateImageView(mDevice, &imageInfo, nullptr, &vecSwapImageViews[i]);
+            VK_THROW_IF_FAILED(res);
+        }
+    }
+
+    void GraphicsCore::CreatePipeline(Shader& shader)
+    {
+
+        std::vector<VkDynamicState> dynamicStates = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+        };
+
+        VkPipelineDynamicStateCreateInfo dynamicState{};
+        dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+        dynamicState.pDynamicStates = dynamicStates.data();
+
+        auto bindingDesc = Vertex::GetBindingDescription();
+        auto attrDesc = Vertex::GetAttributeDescriptions();
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions = &bindingDesc;
+        vertexInputInfo.vertexAttributeDescriptionCount = attrDesc.size();
+        vertexInputInfo.pVertexAttributeDescriptions = attrDesc.data();
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float)mSwapExtent.width;
+        viewport.height = (float)mSwapExtent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = mSwapExtent;
+
+        VkPipelineViewportStateCreateInfo viewportState{};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.pViewports = &viewport;
+        viewportState.scissorCount = 1;
+        viewportState.pScissors = &scissor;
+
+        VkPipelineRasterizationStateCreateInfo rasterizer{};
+        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.depthClampEnable = VK_FALSE;
+        rasterizer.rasterizerDiscardEnable = VK_FALSE;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.lineWidth = 1.0f;
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterizer.depthBiasEnable = VK_FALSE;
+        rasterizer.depthBiasConstantFactor = 0.0f;
+        rasterizer.depthBiasClamp = 0.0f;
+        rasterizer.depthBiasSlopeFactor = 0.0f;
+
+        VkPipelineMultisampleStateCreateInfo multisampling{};
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.sampleShadingEnable = VK_FALSE;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisampling.minSampleShading = 1.0f;
+        multisampling.pSampleMask = nullptr;
+        multisampling.alphaToCoverageEnable = VK_FALSE;
+        multisampling.alphaToOneEnable = VK_FALSE;
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+        VkPipelineColorBlendStateCreateInfo colorBlending{};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.logicOp = VK_LOGIC_OP_COPY;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &colorBlendAttachment;
+        colorBlending.blendConstants[0] = 0.0f;
+        colorBlending.blendConstants[1] = 0.0f;
+        colorBlending.blendConstants[2] = 0.0f;
+        colorBlending.blendConstants[3] = 0.0f;
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &shader.mDescLayout; 
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+        VkResult res = vkCreatePipelineLayout(mDevice, &pipelineLayoutInfo, nullptr, &shader.mPipelineLayout);
+        VK_THROW_IF_FAILED(res);
+
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shader.mShaderStages;
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pDepthStencilState = nullptr; // Optional
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.layout = shader.mPipelineLayout;
+        pipelineInfo.renderPass = mRenderPass;
+        pipelineInfo.subpass = 0;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.basePipelineIndex = -1;
+
+        res = vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &shader.mPipeline);
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::CreateRenderPass()
+    {
+        VkAttachmentDescription colorAttachment = {};
+        colorAttachment.format = mSwapFormat;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentReference colorAttachmentRef = {};
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass = {};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+
+        VkSubpassDependency dependency = {};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        VkRenderPassCreateInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = 1;
+        renderPassInfo.pAttachments = &colorAttachment;
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
+
+        VkResult res = vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass);
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::CreateFrameBuffers()
+    {
+        vecFrameBuffers.resize(vecSwapImageViews.size());
+
+        for (size_t i = 0; i < vecSwapImageViews.size(); i++)
+        {
+            VkImageView attachments[] = {vecSwapImageViews.at(i)};
+            VkFramebufferCreateInfo fbInfo = {};
+            fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            fbInfo.renderPass = mRenderPass;
+            fbInfo.attachmentCount = 1;
+            fbInfo.pAttachments = attachments;
+            fbInfo.width = mSwapExtent.width;
+            fbInfo.height = mSwapExtent.height;
+            fbInfo.layers = 1;
+
+            VkResult res = vkCreateFramebuffer(mDevice, &fbInfo, nullptr, &vecFrameBuffers[i]);
+            VK_THROW_IF_FAILED(res);
+        }
+    }
+
+    void GraphicsCore::CreateCommandPool()
+    {
+        VkCommandPoolCreateInfo cmdPoolInfo = {};
+        cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        cmdPoolInfo.queueFamilyIndex = mQueueData.mGraphicsQueueIndex.value();
+
+        VkResult res = vkCreateCommandPool(mDevice, &cmdPoolInfo, nullptr, &mCmdPool);
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::CreateCommandBuffer()
+    {
+        vecCmdBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
+        VkCommandBufferAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = mCmdPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = vecCmdBuffers.size();
+
+        VkResult res = vkAllocateCommandBuffers(mDevice, &allocInfo, vecCmdBuffers.data());
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::RecordCommandBuffer(VkCommandBuffer cmdBuffer, uint32_t imgIndex)
+    {
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = 0;
+        beginInfo.pInheritanceInfo = nullptr;
+
+        VkResult res = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::CreateSyncObjects()
+    {
+        vecImgAvSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        vecRenderFinsihSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        vecFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
+        VkSemaphoreCreateInfo semaphoreInfo = {};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        VkFenceCreateInfo fenceInfo = {};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            VkResult res = vkCreateSemaphore(mDevice, &semaphoreInfo, nullptr, &vecImgAvSemaphores[i]);
+            VK_THROW_IF_FAILED(res);
+
+            res = vkCreateSemaphore(mDevice, &semaphoreInfo, nullptr, &vecRenderFinsihSemaphores[i]);
+            VK_THROW_IF_FAILED(res);
+
+            res = vkCreateFence(mDevice, &fenceInfo, nullptr, &vecFlightFences[i]);
+            VK_THROW_IF_FAILED(res);
+        }
+    }
+
+    void GraphicsCore::RecreateSwapChain(NgineWindow* p)
+    {
+        int width = p->GetWidth(); int height = p->GetHeight();
+        
+        vkDeviceWaitIdle(mDevice);
+
+        for (size_t i = 0; i < vecFrameBuffers.size(); i++)
+        {
+            vkDestroyFramebuffer(mDevice, vecFrameBuffers[i], nullptr);
+        }
+
+        for (size_t i = 0; i < vecSwapImageViews.size(); i++)
+        {
+            vkDestroyImageView(mDevice, vecSwapImageViews[i], nullptr);
+        }
+
+        vkDestroySwapchainKHR(mDevice, mSwapchain, nullptr);
+
+        CreateSwapchain(p);
+        CreateImageViews();
+        CreateFrameBuffers();
+    }
+
+    void GraphicsCore::CreateVertexBuffer(Mesh& m, std::vector<Vertex> verts)
+    {
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingMemory;
+
+        //Callucate memory size required to hold the buffer
+        VkDeviceSize bufferSize = sizeof(verts[0]) * verts.size();
+
+        //Create buffer that can interact with CPU
+        CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingMemory);
+
+        //Copy data from CPU to staging buffer
+        void* data;
+        vkMapMemory(mDevice, stagingMemory, 0, bufferSize, 0, &data);
+        memcpy(data, verts.data(), (size_t)bufferSize);
+        vkUnmapMemory(mDevice, stagingMemory);
+
+        //Create vertex buffer that will be utilized by GPU
+        CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m.mVertexBuffer, m.mVertexMemory);
+
+        //Copy data from staging buffer to vertex buffer
+        CopyBuffer(stagingBuffer, m.mVertexBuffer, bufferSize);
+
+        //Clear staging buffer
+        vkDestroyBuffer(mDevice, stagingBuffer, nullptr);
+        vkFreeMemory(mDevice, stagingMemory, nullptr);
+    }
+
+    uint32_t GraphicsCore::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags props)
+    {
+        VkPhysicalDeviceMemoryProperties memProps;
+        vkGetPhysicalDeviceMemoryProperties(mPhysDevice, &memProps);
+
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; i++)
+        {
+            if ((typeFilter & (1 << i)) && (memProps.memoryTypes[i].propertyFlags & props) == props)
+                return i;
+        }
+
+        throw Exception();
+    }
+
+    void GraphicsCore::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, VkBuffer& buffer, VkDeviceMemory& memory)
+    {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkResult res = vkCreateBuffer(mDevice, &bufferInfo, nullptr, &buffer);
+        VK_THROW_IF_FAILED(res);
+
+        VkMemoryRequirements memReq;
+        vkGetBufferMemoryRequirements(mDevice, buffer, &memReq);
+
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReq.size;
+        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, props);
+
+        res = vkAllocateMemory(mDevice, &allocInfo, nullptr, &memory);
+        VK_THROW_IF_FAILED(res);
+
+        vkBindBufferMemory(mDevice, buffer, memory, 0);
+    }
+
+    void GraphicsCore::CopyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+    {
+        VkCommandBufferAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = mCmdPool;
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer cmdBuffer;
+        vkAllocateCommandBuffers(mDevice, &allocInfo, &cmdBuffer);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+        VkBufferCopy copyRegion = {};
+        copyRegion.srcOffset = 0; // Optional
+        copyRegion.dstOffset = 0; // Optional
+        copyRegion.size = size;
+
+        vkCmdCopyBuffer(cmdBuffer, src, dst, 1, &copyRegion);
+        vkEndCommandBuffer(cmdBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+
+        vkQueueSubmit(mGraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(mGraphicsQueue);
+
+        vkFreeCommandBuffers(mDevice, mCmdPool, 1, &cmdBuffer);
+    }
+
+    void GraphicsCore::CreateIndexBuffer(Mesh& m, std::vector<uint16_t> indices)
+    {
+        //Calculate memory required to hold the buffer
+        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingMemory;
+
+        //Create staging buffer
+        CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingMemory);
+
+        //Copy data to staging buffer
+        void* data;
+        vkMapMemory(mDevice, stagingMemory, 0, bufferSize, 0, &data);
+        memcpy(data, indices.data(), (size_t)bufferSize);
+        vkUnmapMemory(mDevice, stagingMemory);
+
+        //Create index buffer
+        CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m.mIndexBuffer, m.mIndexMemory);
+        
+        //Copy data from staging to index buffer
+        CopyBuffer(stagingBuffer, m.mIndexBuffer, bufferSize);
+
+        //Release staging buffer
+        vkDestroyBuffer(mDevice, stagingBuffer, nullptr);
+        vkFreeMemory(mDevice, stagingMemory, nullptr);
+    }
+
+    void GraphicsCore::CreateDescriptorSetLayout(Shader& shader)
+    {
+        VkDescriptorSetLayoutBinding mvpLayoutBinding = {};
+        mvpLayoutBinding.binding = 0;
+        mvpLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        mvpLayoutBinding.descriptorCount = 1;
+        mvpLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        mvpLayoutBinding.pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &mvpLayoutBinding;
+
+        VkResult res = vkCreateDescriptorSetLayout(mDevice, &layoutInfo, nullptr, &shader.mDescLayout);
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::CreateMvpBuffer(Model& m)
+    {
+        VkDeviceSize bufferSize = sizeof(MVP);
+	
+        m.vecUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        m.vecUniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+        m.vecUniformMemory.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            CreateBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, m.vecUniformBuffers[i], m.vecUniformMemory[i]);
+            vkMapMemory(mDevice, m.vecUniformMemory[i], 0, bufferSize, 0, &m.vecUniformBuffersMapped[i]);
+        }
+    }
+
+    void GraphicsCore::CreateDescriptorPool(Shader& shader)
+    {
+        VkDescriptorPoolSize poolSize = {};
+        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        VkDescriptorPoolCreateInfo poolInfo = {};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = (MAX_FRAMES_IN_FLIGHT * 200);
+
+        VkResult res = vkCreateDescriptorPool(mDevice, &poolInfo, nullptr, &shader.mDescPool);
+        VK_THROW_IF_FAILED(res);
+    }
+
+    void GraphicsCore::CreateDescriptorSets(Model& m, Shader& shader)
+    {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader.mDescLayout);
+        VkDescriptorSetAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = shader.mDescPool;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        allocInfo.pSetLayouts = layouts.data();
+
+        for (auto& mesh : m.vecMeshes)
+        {
+            mesh.vecDescSets.resize(MAX_FRAMES_IN_FLIGHT);
+            VkResult res = vkAllocateDescriptorSets(mDevice, &allocInfo, mesh.vecDescSets.data());
+            VK_THROW_IF_FAILED(res);
+        }
+        
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorBufferInfo bufferInfo = {};
+            bufferInfo.buffer = m.vecUniformBuffers[i];
+            bufferInfo.offset = 0;
+            bufferInfo.range = sizeof(MVP);
+
+            for (auto& mesh : m.vecMeshes)
+            {
+                VkWriteDescriptorSet descriptorWrite{};
+                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrite.dstSet = mesh.vecDescSets[i];
+                descriptorWrite.dstBinding = 0;
+                descriptorWrite.dstArrayElement = 0;
+                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                descriptorWrite.descriptorCount = 1;
+                descriptorWrite.pBufferInfo = &bufferInfo;
+                descriptorWrite.pImageInfo = nullptr;
+                descriptorWrite.pTexelBufferView = nullptr;
+
+                vkUpdateDescriptorSets(mDevice, 1, &descriptorWrite, 0, nullptr);
+            }
+        }
+
+    }
+
+    void GraphicsCore::CreateDescriptorSets(GameObject3D* pGo)
+    {
+        for(auto& model : vecModels)
+        {
+            if(model.mId == pGo->mAssocMdl)
+            {
+                for(auto& shader : vecShaders)
+                {
+                    if(shader.mId == pGo->mAssocShader)
+                    {
+                        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader.mDescLayout);
+                        VkDescriptorSetAllocateInfo allocInfo = {};
+                        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                        allocInfo.descriptorPool = shader.mDescPool;
+                        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+                        allocInfo.pSetLayouts = layouts.data();
+
+                        for (auto& mesh : model.vecMeshes)
+                        {
+                            mesh.vecDescSets.resize(MAX_FRAMES_IN_FLIGHT);
+                            VkResult res = vkAllocateDescriptorSets(mDevice, &allocInfo, mesh.vecDescSets.data());
+                            VK_THROW_IF_FAILED(res);
+                            LOG_F(INFO, "Descriptor set allocated!");
+                        }
+                        
+
+                        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                            VkDescriptorBufferInfo bufferInfo = {};
+                            bufferInfo.buffer = model.vecUniformBuffers[i];
+                            bufferInfo.offset = 0;
+                            bufferInfo.range = sizeof(MVP);
+
+                            for (auto& mesh : model.vecMeshes)
+                            {
+                                VkWriteDescriptorSet descriptorWrite{};
+                                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                                descriptorWrite.dstSet = mesh.vecDescSets[i];
+                                descriptorWrite.dstBinding = 0;
+                                descriptorWrite.dstArrayElement = 0;
+                                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                                descriptorWrite.descriptorCount = 1;
+                                descriptorWrite.pBufferInfo = &bufferInfo;
+                                descriptorWrite.pImageInfo = nullptr;
+                                descriptorWrite.pTexelBufferView = nullptr;
+
+                                vkUpdateDescriptorSets(mDevice, 1, &descriptorWrite, 0, nullptr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void GraphicsCore::DrawFrame(NgineWindow* pWin)
+    {
+        uint32_t bindCount = 0;
+
+        vkWaitForFences(mDevice, 1, &vecFlightFences[mCurrentFrame], VK_TRUE, UINT64_MAX);
+
+        uint32_t imgIndex;
+        VkResult res = vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, vecImgAvSemaphores[mCurrentFrame], VK_NULL_HANDLE, &imgIndex);
+        if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || mFramebufferResized) {
+            mFramebufferResized = false;
+            RecreateSwapChain(pWin);
+            return;
+        }
+        else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
+            throw VulkanException(res);
+
+        vkResetFences(mDevice, 1, &vecFlightFences[mCurrentFrame]);
+        vkResetCommandBuffer(vecCmdBuffers[mCurrentFrame], 0);
+        RecordCommandBuffer(vecCmdBuffers[mCurrentFrame], imgIndex);
+
+        VkClearValue clearColor = { 0.0f, 0.4f, 0.6f, 1.0f };
+
+        VkRenderPassBeginInfo rpInfo = {};
+        rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rpInfo.renderPass = mRenderPass;
+        rpInfo.framebuffer = vecFrameBuffers.at(imgIndex);
+        rpInfo.renderArea.offset = { 0,0 };
+        rpInfo.renderArea.extent = mSwapExtent;
+        rpInfo.clearValueCount = 1;
+        rpInfo.pClearValues = &clearColor;
+
+        vkCmdBeginRenderPass(vecCmdBuffers[mCurrentFrame], &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        VkViewport viewport = {};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float)mSwapExtent.width;
+        viewport.height = (float)mSwapExtent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(vecCmdBuffers[mCurrentFrame], 0, 1, &viewport);
+
+        VkRect2D scissor = {};
+        scissor.offset = { 0,0 };
+        scissor.extent = mSwapExtent;
+        vkCmdSetScissor(vecCmdBuffers[mCurrentFrame], 0, 1, &scissor);
+
+        int shd_index = 0;
+
+        for(auto object : vecObjects)
+        {
+            for(int i = 0; i < vecShaders.size(); i++)
+            {
+                if(vecShaders[i].mId == object->mAssocShader)
+                    shd_index = i;
+            }
+
+            if(object->mAssocMdl != 0 && object->mAssocShader != 0)
+            {
+                UpdateMvpBuffer(mCurrentFrame, object);
+                for(auto& model : vecModels)
+                {
+                    if(model.mId == object->mAssocMdl)
+                    {
+                        for(auto& mesh : model.vecMeshes)
+                        {
+                            VkBuffer vertexBuffers[] = { mesh.mVertexBuffer };
+                            VkDeviceSize offset[] = { 0 };
+                            vkCmdBindPipeline(vecCmdBuffers[mCurrentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vecShaders[shd_index].mPipeline);
+                            vkCmdBindVertexBuffers(vecCmdBuffers[mCurrentFrame], bindCount, 1, vertexBuffers, offset);
+                            if (mesh.mIndexBuffer != VK_NULL_HANDLE)
+                            {
+                                vkCmdBindIndexBuffer(vecCmdBuffers[mCurrentFrame], mesh.mIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+                                vkCmdBindDescriptorSets(vecCmdBuffers[mCurrentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vecShaders[shd_index].mPipelineLayout, 0, 1, &mesh.vecDescSets[mCurrentFrame], 0, nullptr);
+                                vkCmdDrawIndexed(vecCmdBuffers[mCurrentFrame], mesh.mIndexCount, 1, 0, 0, 0);
+                                    
+                            }
+                            else
+                            {
+                                vkCmdDraw(vecCmdBuffers[mCurrentFrame], mesh.mVertexCount, 1, 0, 0);
+                            }
+                            bindCount++;
+                        }
+                    }
+                }
+            }
+        }
+
+        vkCmdEndRenderPass(vecCmdBuffers[mCurrentFrame]);
+
+	    res = vkEndCommandBuffer(vecCmdBuffers[mCurrentFrame]);
+        VK_THROW_IF_FAILED(res);
+
+        VkSemaphore waitSemaphores[] = { vecImgAvSemaphores[mCurrentFrame]};
+        VkSemaphore signalSemaphores[] = { vecRenderFinsihSemaphores[mCurrentFrame]};
+        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &vecCmdBuffers[mCurrentFrame];
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        res = vkQueueSubmit(mGraphicsQueue, 1, &submitInfo, vecFlightFences[mCurrentFrame]);
+        VK_THROW_IF_FAILED(res);
+
+        VkSwapchainKHR swapchains[] = {mSwapchain};
+
+        VkPresentInfoKHR presInfo = {};
+        presInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presInfo.waitSemaphoreCount = 1;
+        presInfo.pWaitSemaphores = signalSemaphores;
+        presInfo.swapchainCount = 1;
+        presInfo.pSwapchains = swapchains;
+        presInfo.pImageIndices = &imgIndex;
+        presInfo.pResults = nullptr;
+
+        res = vkQueuePresentKHR(mPresentationQueue, &presInfo);
+
+        if (res == VK_ERROR_OUT_OF_DATE_KHR) {
+            RecreateSwapChain(pWin);
+            return;
+        }
+        else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
+            throw VulkanException(res);
+
+        
+	    mCurrentFrame = (mCurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    }
+
+    void GraphicsCore::UpdateMvpBuffer(uint32_t frameIndex, GameObject3D* go)
+    {
+        MVP mvp = {};
+        mvp.model = go->GetWorldMatrix();
+        mvp.view = view;
+        mvp.projection = proj;
+
+        for(auto& model : vecModels)
+        {
+            if(model.mId == go->mAssocMdl)
+                memcpy(model.vecUniformBuffersMapped[frameIndex], &mvp, sizeof(mvp));
+        }
+    }
+
+    std::array<VkVertexInputAttributeDescription, 3> Vertex::GetAttributeDescriptions()
+    {
+        std::array<VkVertexInputAttributeDescription, 3> attrDesc = {};
+
+        //Position
+        attrDesc[0].binding = 0;
+        attrDesc[0].location = 0;
+        attrDesc[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attrDesc[0].offset = offsetof(Vertex, pos);
+
+        //Color
+        attrDesc[1].binding = 0;
+        attrDesc[1].location = 1;
+        attrDesc[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attrDesc[1].offset = offsetof(Vertex, color);
+
+        //UV
+        attrDesc[2].binding = 0;
+        attrDesc[2].location = 2;
+        attrDesc[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attrDesc[2].offset = offsetof(Vertex, uv);
+
+        return attrDesc;
+    }
+
+    VkVertexInputBindingDescription Vertex::GetBindingDescription()
+    {
+        VkVertexInputBindingDescription bindingDesc = {};
+        bindingDesc.binding = 0;
+        bindingDesc.stride = sizeof(Vertex);
+        bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return bindingDesc;
+    }
+
+    uint32_t GraphicsCore::GenerateExclusiveModelId()
+    {
+        if(vecModels.empty())
+            return 1;
+        
+        uint32_t id = 1;
+        bool idFound = false;
+
+        do {
+            idFound = false;
+
+            for(auto& model : vecModels)
+            {
+                if(model.mId == id)
+                    idFound = true;
+            }
+
+            if(idFound)
+                id++;
+
+        } while (idFound);
+
+        return id;
+    }
+
+    uint32_t GraphicsCore::GenerateExclusiveShaderId()
+    {
+        if(vecShaders.empty())
+            return 1;
+        
+        uint32_t id = 1;
+        bool idFound = false;
+
+        do {
+            idFound = false;
+
+            for(auto& shader : vecShaders)
+            {
+                if(shader.mId == id)
+                    idFound = true;
+            }
+
+            if(idFound)
+                id++;
+
+        } while (idFound);
+
+        return id;
+    }
+
+    uint32_t GraphicsCore::LoadShader(const char* vertexPath, const char* fragmentPath)
+    {
+        Shader shader;
+
+        //Open and read data from vertex shader
+        std::ifstream vertexFile(vertexPath, std::ios::ate | std::ios::binary);
+        if (!vertexFile.is_open())
+        {
+            LOG_F(ERROR, "Cannot open %s", vertexPath);
+            return 0;
+        }
+
+        size_t vertexSize = (size_t)vertexFile.tellg();
+
+        std::vector<char> vertexShaderBuffer(vertexSize);
+        vertexFile.seekg(0);
+        vertexFile.read(vertexShaderBuffer.data(), vertexSize);
+        vertexFile.close();
+
+        //Open and read data from fragment shader
+        std::ifstream fragmentFile(fragmentPath, std::ios::ate | std::ios::binary);
+        if (!fragmentFile.is_open())
+        {
+            LOG_F(ERROR, "Cannot open %s", fragmentPath);
+            return 0;
+        }
+
+        size_t fragmentSize = (size_t)fragmentFile.tellg();
+
+        std::vector<char> fragmentShaderBuffer(fragmentSize);
+        fragmentFile.seekg(0);
+        fragmentFile.read(fragmentShaderBuffer.data(), fragmentSize);
+        fragmentFile.close();
+
+        //Create shader module for vertex shader
+        VkShaderModuleCreateInfo moduleInfo{};
+        moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        moduleInfo.codeSize = vertexShaderBuffer.size();
+        moduleInfo.pCode = reinterpret_cast<const uint32_t*>(vertexShaderBuffer.data());
+
+        VkResult res = vkCreateShaderModule(mDevice, &moduleInfo, nullptr, &shader.mVertex);
+        if(res != VK_SUCCESS)
+        {
+            LOG_F(ERROR, "Error creating vertex shader module! EC = %d", res);
+            return 0;
+        }
+
+        //Create shader module for fragment shader
+        ZeroMemory(&moduleInfo, sizeof(moduleInfo));
+        moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        moduleInfo.codeSize = fragmentShaderBuffer.size();
+        moduleInfo.pCode = reinterpret_cast<const uint32_t*>(fragmentShaderBuffer.data());
+        res = vkCreateShaderModule(mDevice, &moduleInfo, nullptr, &shader.mFragment);
+        if (res != VK_SUCCESS)
+        {
+            LOG_F(ERROR, "Error creating fragment shader module! EC = %d", res);
+            return 0;
+        }
+
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = shader.mVertex;
+        vertShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = shader.mFragment;
+        fragShaderStageInfo.pName = "main";
+
+        shader.mShaderStages[0] = vertShaderStageInfo;
+        shader.mShaderStages[1] = fragShaderStageInfo;
+
+        CreateDescriptorSetLayout(shader);
+        CreatePipeline(shader);
+        CreateDescriptorPool(shader);
+
+
+        shader.mId = GenerateExclusiveShaderId();
+        vecShaders.push_back(shader);
+
+        LOG_F(INFO, "Shader loaded with ID = %d", shader.mId);
+
+        return shader.mId;
+    }
+
+    uint32_t GraphicsCore::CreateModelFromVertexList(std::vector<Vertex>& v, std::vector<uint16_t>& i)
+    {
+        Model mdl = {};
+        mdl.vecMeshes.push_back(Mesh());
+        mdl.vecMeshes[0].mVertexCount = v.size();
+        mdl.vecMeshes[0].mIndexCount = i.size();
+
+        try
+        {
+            CreateVertexBuffer(mdl.vecMeshes[0], v);
+            CreateIndexBuffer(mdl.vecMeshes[0], i);
+            CreateMvpBuffer(mdl);
+        }
+        catch (const VulkanException& ve)
+        {
+            LOG_F(ERROR, "%s", ve.what());
+            return 0;
+        }
+
+
+        mdl.mId = GenerateExclusiveModelId();
+        vecModels.push_back(mdl);
+
+        LOG_F(INFO, "Model created with ID = %d", mdl.mId);
+        return mdl.mId;
+    }
+
+    void GraphicsCore::Temp_SetCamera(glm::vec3 pos)
+    {
+        view = glm::lookAt(glm::vec3(5.0f,5.0f,5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+	    proj = glm::perspective(glm::radians(45.f), mSwapExtent.width / (float)mSwapExtent.height, 0.01f, 10.0f);
+    }
+
+    void GraphicsCore::AddGameObjectToDrawList(GameObject3D* pGo)
+    {
+        CreateDescriptorSets(pGo);
+        vecObjects.push_back(pGo);
+        LOG_F(INFO, "Game object added to draw list...");
+    }
+
+    uint32_t GraphicsCore::LoadIntermediateModel(const char* modelPath)
+    {
+        std::string finalPath = "Resource/Model/" + FileUtils::CutPathToFileName(modelPath);
+        LOG_F(INFO, "Beggining to load %s", finalPath.c_str());
+
+        Assimp::Importer imp;
+        const aiScene* pScene = imp.ReadFile(finalPath.c_str(), aiProcess_Triangulate);
+
+        if(pScene == nullptr)
+        {
+            LOG_F(ERROR, "Cannot open 3D file");
+            return 0;
+        }
+
+        Model result;
+        LOG_F(INFO, "This model contains %d meshes", pScene->mNumMeshes);
+
+        ProcessNode(pScene->mRootNode, pScene, result);
+
+        CreateMvpBuffer(result);
+        result.mId = GenerateExclusiveModelId();
+        vecModels.push_back(result);
+
+        LOG_F(INFO, "Model %s loaded with id = %d", finalPath.c_str(), result.mId);
+
+        return result.mId;
+    }
+
+    void GraphicsCore::ProcessNode(aiNode* pNode, const aiScene* pScene, Model& outMdl)
+    {
+        for(uint32_t i = 0; i < pNode->mNumMeshes; i++)
+        {
+            outMdl.vecMeshes.push_back(ProcessMesh(pScene->mMeshes[pNode->mMeshes[i]], pScene));
+        }
+
+        for(uint32_t i = 0; i < pNode->mNumChildren; i++)
+        {
+            ProcessNode(pNode->mChildren[i], pScene, outMdl);
+        }
+    }
+
+    Mesh GraphicsCore::ProcessMesh(aiMesh* pMesh, const aiScene* pScene)
+    {
+        Mesh result;
+
+        std::vector<Vertex> verts;
+        std::vector<uint16_t> inds;
+
+        for(uint32_t i = 0; i < pMesh->mNumVertices; i++)
+        {
+            Vertex v = {};
+
+            v.pos.x = pMesh->mVertices[i].x;
+            v.pos.y = pMesh->mVertices[i].y;
+            v.pos.z = pMesh->mVertices[i].z;
+            
+            if(pMesh->mTextureCoords[0])
+            {
+                v.uv.x = pMesh->mTextureCoords[0][i].x;
+                v.uv.y = pMesh->mTextureCoords[0][i].y;
+            }
+
+            verts.push_back(v);
+        }
+
+        for(uint32_t i = 0; i < pMesh->mNumFaces; i++)
+        {
+            aiFace face = pMesh->mFaces[i];
+            for(uint32_t j = 0; j < face.mNumIndices; j++)
+                inds.push_back((uint16_t)face.mIndices[j]);
+        }
+
+        result.mIndexCount = inds.size();
+        result.mVertexCount = verts.size();
+
+        CreateVertexBuffer(result, verts);
+        CreateIndexBuffer(result, inds);
+
+        return result;
+    }
+
+    void GraphicsCore::SetCamera(Camera& c)
+    {
+        view = c.GetViewMatrix();
+        proj = c.GetProjectionMatrix();
+    }
+
+    Camera::Camera()
+    {
+        pos = glm::vec3(5.0f, 5.0f, 5.0f);
+        rot = glm::vec3(0.0f, 0.0f, 0.0f);
+        UpdateViewMatrix();
+    }
+
+    void Camera::SetProjectionValues(float fov, float aspectRatio, float nz, float fz)
+    {
+        float fovRadians = glm::radians(fov);
+        proj = glm::perspective(fovRadians, aspectRatio, nz, fz);
+    }
+
+    void Camera::UpdateViewMatrix()
+    {
+        view = glm::lookAt(glm::vec3(0,0,0), glm::vec3(0,0,-1), glm::vec3(0,-1,0));
+
+        glm::mat4 rotM = glm::mat4(1.0f);
+		glm::mat4 transM;
+
+        rotM = glm::rotate(rotM, glm::radians(rot.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		rotM = glm::rotate(rotM, glm::radians(rot.y), glm::vec3(0.0f, -1.0f, 0.0f));
+		rotM = glm::rotate(rotM, glm::radians(rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        transM = glm::translate(glm::mat4(1.0f), pos);
+
+        view = view * rotM;
+        view = view * transM;
+    }
+
+    const glm::mat4 Camera::GetProjectionMatrix() const
+    {
+        return proj;
+    }
+
+    const glm::mat4 Camera::GetViewMatrix() const
+    {
+        return view;
+    }
+
+    void Camera::SetPosition(const glm::vec3& new_pos)
+    {
+        pos = new_pos;
+        UpdateViewMatrix();
+    }
+
+    void Camera::AdjustPosition(const glm::vec3& new_pos)
+    {
+        pos += new_pos;
+        UpdateViewMatrix();
+    }
+
+    void Camera::AdjustRotation(const glm::vec3& new_rot)
+    {
+        rot += new_rot;
+
+        UpdateViewMatrix();
     }
 
 #elif defined(TARGET_PLATFORM_WINDOWS)
