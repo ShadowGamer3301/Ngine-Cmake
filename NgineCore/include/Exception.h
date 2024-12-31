@@ -8,6 +8,7 @@ namespace Ngine
 	class NGAPI DirectXException;
 #elif defined(TARGET_PLATFORM_XBOX)
 	class NGAPI Excpetion;
+	class NGAPI DirectXException;
 #endif
 
 	class Exception : public std::exception
@@ -22,7 +23,7 @@ namespace Ngine
 		mutable std::string wBuffer;
 	};
 
-#if defined(TARGET_PLATFORM_WINDOWS)
+#if defined(TARGET_PLATFORM_WINDOWS) || defined(TARGET_PLATFORM_XBOX)
 	class DirectXException : public Exception
 	{
 	public:

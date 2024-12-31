@@ -103,12 +103,12 @@ namespace Ngine
 		UnregisterClass(GetName(), GetInstance());
 	}
 
-	const char* NgineWindow::WindowClass::GetName()
+	const char* NgineWindow::WindowClass::GetName() noexcept
 	{
 		return wndClassName;
 	}
 
-	HINSTANCE NgineWindow::WindowClass::GetInstance()
+	HINSTANCE NgineWindow::WindowClass::GetInstance() noexcept
 	{
 		return wndClass.hInst;
 	}
@@ -127,16 +127,89 @@ namespace Ngine
 		}
 
 		ShowWindow(hWnd, SW_SHOW);
+
+		mSizeArray[0] = width;
+		mSizeArray[1] = height;
 	}
 
 	NgineWindow::~NgineWindow()
 	{
-
+		DestroyWindow(hWnd);
 	}
 
 	bool NgineWindow::UpdateWindow()
 	{
+		MSG msg;
+		//While queue has messages, remove and dispatch them (but do not block on empty queue)
+		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+		{
+			//Check for quit because peekmessage does not signal this via return val
+			if (msg.message == WM_QUIT)
+			{
+				//Return false when quit signal occurs
+				return false;
+			}
+
+			//TranslateMessage will post auxilliary WM_CHAR messages from key msgs
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
 		return true;
+	}
+
+	uint32_t NgineWindow::GetWidth()
+	{
+		return mSizeArray[0];
+	}
+
+	uint32_t NgineWindow::GetHeight()
+	{
+		return mSizeArray[1];
+	}
+
+	HWND NgineWindow::GetWindowHandle()
+	{
+		return hWnd;
+	}
+
+	LRESULT CALLBACK NgineWindow::HandleMsgSetup(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
+	{
+		// use create parameter passed in from CreateWindow() to store window class pointer at WinAPI side
+		if (msg == WM_NCCREATE)
+		{
+			// extract ptr to window class from creation data
+			const CREATESTRUCTW* const pCreate = reinterpret_cast<CREATESTRUCTW*>(lParam);
+			NgineWindow* const pWnd = static_cast<NgineWindow*>(pCreate->lpCreateParams);
+			// set WinAPI-managed user data to store ptr to window instance
+			SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pWnd));
+			// set message proc to normal (non-setup) handler now that setup is finished
+			SetWindowLongPtr(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&NgineWindow::HandleMsgThunk));
+			// forward message to window instance handler
+			return pWnd->HandleMsg(hWnd, msg, wParam, lParam);
+		}
+		// if we get a message before the WM_NCCREATE message, handle with default handler
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
+
+	LRESULT CALLBACK NgineWindow::HandleMsgThunk(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
+	{
+		// retrieve ptr to window instance
+		NgineWindow* const pWnd = reinterpret_cast<NgineWindow*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+		// forward message to window instance handler
+		return pWnd->HandleMsg(hWnd, msg, wParam, lParam);
+	}
+
+	LRESULT NgineWindow::HandleMsg(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) noexcept
+	{
+		switch (msg)
+		{
+		case WM_CLOSE:
+			PostQuitMessage(0);
+			return 0;
+		}
+
+		return DefWindowProc(hWnd, msg, wp, lp);
 	}
 
 #endif

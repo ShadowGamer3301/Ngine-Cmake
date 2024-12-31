@@ -59,6 +59,10 @@ namespace Ngine
 		~NgineWindow();
 
 		bool UpdateWindow();
+		HWND GetWindowHandle();
+
+		uint32_t GetWidth();
+		uint32_t GetHeight();
 
 	private:
 		static LRESULT CALLBACK HandleMsgSetup(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept;
@@ -67,6 +71,7 @@ namespace Ngine
 
 	private:
 		HWND hWnd;
+		uint32_t mSizeArray[2] = { 0,0 };
 	};
 #endif
 }

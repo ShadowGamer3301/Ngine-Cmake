@@ -76,6 +76,8 @@ elseif(TARGET_PLATFORM_XBOX)
 	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Xbox/Lib")
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Xbox/Bin")
 
+	add_compile_options("/SUBSYSTEM:WINDOWS")
+
 	add_compile_definitions("TARGET_PLATFORM_XBOX")
 
 	include_directories("$ENV{GRDKLatest}/GameKit/Include" "vendor/include")
@@ -83,4 +85,5 @@ elseif(TARGET_PLATFORM_XBOX)
 	add_subdirectory(NgineCore)
 	add_subdirectory(NgineRuntime)
 
+	file(COPY "Resource" DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 endif()

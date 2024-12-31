@@ -78,6 +78,9 @@
 //Loguru headers
 #include <loguru.hpp>
 
+#define DX_THROW_IF_FAILED(hr) if(FAILED(hr)) throw DirectXException(hr)
+#define DX_COM_RELEASE(p) if(p != nullptr) p->Release()
+
 #endif
 
 //C++ stdlib headers

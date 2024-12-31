@@ -19,7 +19,7 @@ namespace Ngine
 		return wBuffer.c_str();
 	}
 	
-#if defined(TARGET_PLATFORM_WINDOWS)
+#if defined(TARGET_PLATFORM_WINDOWS) || defined(TARGET_PLATFORM_XBOX)
 	DirectXException::DirectXException(HRESULT hr, std::source_location loc)
 		: code(hr), Exception(loc)
 	{}
